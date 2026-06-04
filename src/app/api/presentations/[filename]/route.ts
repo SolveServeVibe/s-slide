@@ -7,10 +7,10 @@ export const runtime = "nodejs";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { filename: string } }
+  { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
-    const { filename } = params;
+    const { filename } = await params;
 
     // Security check - ensure filename is safe
     if (!filename || !filename.match(/^presentation-[a-f0-9-]+\.pptx$/)) {
