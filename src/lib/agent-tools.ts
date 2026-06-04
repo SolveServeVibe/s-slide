@@ -2,21 +2,25 @@ import PptxGenJS from "pptxgenjs";
 
 export async function executePptxGenJSCode(code: string): Promise<Buffer> {
   try {
-    // Create a function that will execute the code with PptxGenJS available
-    const pptx = new PptxGenJS();
-
-    // Create an async function that takes pptx as a parameter
-    const executeCode = new Function('pptx', 'pptxgenjs', `
+    // Create an async function that takes pptxgenjs as a parameter
+    const executeCode = new Function('pptxgenjs', `
       return (async () => {
         ${code}
-        return pptx.write({ outputType: 'nodebuffer' });
+        // The code should create a pptx instance and we'll capture it
+        return pptxgenjs;
       })();
     `);
 
-    // Execute the code with our PptxGenJS instance
-    const buffer = await executeCode(pptx, PptxGenJS);
+    // Execute the code to get the pptx instance
+    const result = await executeCode(PptxGenJS);
 
-    return Buffer.from(buffer);
+    // If the result is a PptxGenJS instance, generate the buffer
+    if (result && typeof result.write === 'function') {
+      const buffer = await result.write({ outputType: 'nodebuffer' });
+      return Buffer.from(buffer);
+    }
+
+    throw new Error('Failed to generate presentation - invalid pptx instance');
   } catch (error) {
     console.error("Code execution failed:", error);
     throw new Error(`Execution failed: ${error instanceof Error ? error.message : String(error)}`);
