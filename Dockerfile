@@ -4,6 +4,7 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
+# Cache bust: 2025-06-04
 COPY package.json package-lock.json ./
 RUN npm ci
 
