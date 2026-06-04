@@ -23,32 +23,49 @@ export default function Home() {
         body: JSON.stringify({ messages: [...messages, userMessage] })
       });
 
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No reader");
 
       const decoder = new TextDecoder();
       let assistantMessage = "";
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter(line => line.trim());
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = JSON.parse(line.slice(6));
-            if (data.content) {
-              assistantMessage += data.content;
-              setMessages([...messages, userMessage, { role: "assistant", content: assistantMessage }]);
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          if (trimmed.startsWith("data:")) {
+            try {
+              const jsonStr = trimmed.slice(5).trim();
+              if (jsonStr === "[DONE]") continue;
+              const data = JSON.parse(jsonStr);
+              if (data.content) {
+                assistantMessage += data.content;
+                setMessages(prev => [...prev, { role: "assistant", content: assistantMessage }]);
+              }
+            } catch (e) {
+              console.error("Parse error:", e, "Line:", trimmed);
             }
+          } else {
+            // Plain text fallback
+            assistantMessage += trimmed;
+            setMessages(prev => [...prev, { role: "assistant", content: assistantMessage }]);
           }
         }
       }
     } catch (error) {
       console.error("Error:", error);
-      setMessages([...messages, userMessage, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
     } finally {
       setIsLoading(false);
     }
