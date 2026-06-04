@@ -1,10 +1,17 @@
-import { anthropic } from "@ai-sdk/anthropic";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { streamText } from "ai";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
+
+  // Configure Bedrock with AWS credentials
+  const bedrock = createAmazonBedrock({
+    region: process.env.AWS_REGION || "us-east-1",
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  });
 
   const systemPrompt = `You are s-slide, an AI presentation assistant that helps users create beautiful PowerPoint presentations.
 
@@ -24,7 +31,7 @@ Be friendly, concise, and helpful. Focus on delivering working presentations qui
 For now, respond with text about what presentation you would create. The actual PowerPoint generation will be added soon.`;
 
   const result = streamText({
-    model: anthropic("claude-3-5-sonnet-20241022"),
+    model: bedrock("anthropic.claude-3-5-sonnet-20241022-v2:0"),
     system: systemPrompt,
     messages
   });
