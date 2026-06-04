@@ -6,6 +6,43 @@ export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [lastUserMessage, setLastUserMessage] = useState("");
+
+  const generatePresentation = async () => {
+    if (!lastUserMessage || isGenerating) return;
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: lastUserMessage })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Download the file
+        const link = document.createElement("a");
+        link.href = data.downloadUrl;
+        link.download = data.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Add success message
+        setMessages(prev => [...prev, { role: "assistant", content: `✅ Presentation generated! Downloaded as ${data.filename}` }]);
+      } else {
+        throw new Error(data.error || "Generation failed");
+      }
+    } catch (error) {
+      console.error("Generation error:", error);
+      setMessages(prev => [...prev, { role: "assistant", content: `❌ Failed to generate presentation: ${error instanceof Error ? error.message : "Unknown error"}` }]);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -13,6 +50,7 @@ export default function Home() {
 
     const userMessage = { role: "user", content: input };
     setMessages([...messages, userMessage]);
+    setLastUserMessage(input);
     setInput("");
     setIsLoading(true);
 
@@ -140,6 +178,30 @@ export default function Home() {
                 </div>
               </div>
             ))}
+
+            {/* Show download button after assistant responds */}
+            {messages.length > 0 &&
+             messages[messages.length - 1].role === "assistant" &&
+             !isGenerating && (
+              <div className="flex justify-start">
+                <button
+                  onClick={generatePresentation}
+                  className="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-medium flex items-center gap-2"
+                >
+                  📥 Download Presentation
+                </button>
+              </div>
+            )}
+
+            {isGenerating && (
+              <div className="flex justify-start">
+                <div className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl flex items-center gap-2">
+                  <span className="inline-block w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
+                  Generating PowerPoint...
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
 

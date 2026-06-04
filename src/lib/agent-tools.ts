@@ -1,6 +1,34 @@
-// Placeholder for code execution - to be implemented
+import { executeAlmost, setGlobal } from "almostnode";
+import PptxGenJS from "pptxgenjs";
+
+// Set up PptxGenJS globally for almostnode
+const pptx = new PptxGenJS();
+
 export async function executePptxGenJSCode(code: string): Promise<Buffer> {
-  throw new Error("Code execution not yet implemented - please add ANTHROPIC_API_KEY to enable AI features");
+  try {
+    // Create a fresh instance for this execution
+    const freshPptx = new PptxGenJS();
+
+    // Execute the code in sandbox
+    const result = await executeAlmost(code, {
+      timeout: 30000,
+      globals: {
+        pptx: freshPptx,
+        pptxgenjs: PptxGenJS,
+      },
+    });
+
+    if (result.error) {
+      throw new Error(`Execution error: ${result.error}`);
+    }
+
+    // Generate the presentation
+    const buffer = await freshPptx.write({ outputType: "nodebuffer" });
+    return buffer as Buffer;
+  } catch (error) {
+    console.error("Code execution failed:", error);
+    throw error;
+  }
 }
 
 export function generatePresentationCode(
