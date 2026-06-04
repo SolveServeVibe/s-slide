@@ -1,35 +1,6 @@
-import { almost } from "almostnode";
-
-const CODE_EXECUTION_TIMEOUT = 30000;
-
+// Placeholder for code execution - to be implemented
 export async function executePptxGenJSCode(code: string): Promise<Buffer> {
-  const wrappedCode = `
-    const pptx = require("pptxgenjs");
-    const fs = require("fs");
-
-    ${code}
-
-    return pptx.write("base64");
-  `;
-
-  const result = await almost(wrappedCode, {
-    timeout: CODE_EXECUTION_TIMEOUT,
-    modules: ["pptxgenjs"],
-  });
-
-  if (result.error) {
-    throw new Error(`Code execution failed: ${result.error.message || result.error}`);
-  }
-
-  if (result.type === "buffer" && Buffer.isBuffer(result.data)) {
-    return result.data;
-  }
-
-  if (typeof result.data === "string") {
-    return Buffer.from(result.data, "base64");
-  }
-
-  throw new Error("Unexpected result type from code execution");
+  throw new Error("Code execution not yet implemented - please add ANTHROPIC_API_KEY to enable AI features");
 }
 
 export function generatePresentationCode(

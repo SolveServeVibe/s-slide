@@ -1,12 +1,58 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useChat } from "@ai-sdk/react";
 
 export default function Home() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: "/api/chat",
-  });
+  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = { role: "user", content: input };
+    setMessages([...messages, userMessage]);
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, userMessage] })
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let assistantMessage = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(line => line.trim());
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = JSON.parse(line.slice(6));
+            if (data.content) {
+              assistantMessage += data.content;
+              setMessages([...messages, userMessage, { role: "assistant", content: assistantMessage }]);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages([...messages, userMessage, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,9 +81,9 @@ export default function Home() {
               </div>
             )}
 
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <div
-                key={message.id}
+                key={index}
                 className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
@@ -52,41 +98,6 @@ export default function Home() {
                   ) : (
                     <div>{message.content}</div>
                   )}
-
-                  {message.toolInvocations && message.toolInvocations.length > 0 && (
-                    <div className="mt-2 text-sm text-purple-600">
-                      {message.toolInvocations.map((tool, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="inline-block w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
-                          <span>Creating your slides...</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {message.toolResults && message.toolResults.length > 0 && (
-                    <div className="mt-3">
-                      {message.toolResults.map((result, i) => {
-                        const data = result.result as { pptxUrl?: string };
-                        return (
-                          <div key={i} className="space-y-2">
-                            {data.pptxUrl && (
-                              <a
-                                href={data.pptxUrl}
-                                download="presentation.pptx"
-                                className="inline-flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors"
-                              >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                </svg>
-                                Download Presentation
-                              </a>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
@@ -97,7 +108,7 @@ export default function Home() {
             <div className="flex gap-3">
               <input
                 value={input}
-                onChange={handleInputChange}
+                onChange={(e) => setInput(e.target.value)}
                 placeholder="Describe your presentation..."
                 disabled={isLoading}
                 className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-50"
