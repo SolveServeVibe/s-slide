@@ -10,14 +10,6 @@
   --border: #e5e5e5;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-card: var(--card);
-  --color-border: var(--border);
-}
-
 * {
   box-sizing: border-box;
 }
