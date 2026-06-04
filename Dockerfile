@@ -7,6 +7,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Force cache invalidation - bump this timestamp to rebuild from scratch
+RUN echo "Cache bust: 2024-06-04-v4"
+
 COPY package.json package-lock.json ./
 # Cache bust - change this value to force npm install to rerun
 RUN echo "${CACHEBUST}" && npm install --legacy-peer-deps
