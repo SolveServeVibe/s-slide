@@ -34,7 +34,7 @@ export function generatePresentationCode(
 ): string {
   return `
 // Create a new presentation
-const pptx = new pptxgen();
+const pptx = new pptxgenjs();
 
 // Set presentation metadata
 pptx.author = "s-slide AI";
@@ -43,10 +43,8 @@ pptx.title = "${topic.replace(/"/g, '\\"')}";
 
 ${slideDetails ? generateDetailedSlides(slideDetails, topic) : generateDefaultSlides(topic, slideCount)}
 
-// Generate and return the presentation
-pptx.write().then(fileName => {
-  console.log("Presentation created:", fileName);
-});
+// Return the pptx instance for buffer generation
+return pptx;
   `;
 }
 
