@@ -5,7 +5,7 @@ WORKDIR /app
 ENV NODE_ENV production
 
 COPY package.json package-lock.json ./
-RUN npm ci --prefer-offline --no-audit
+RUN npm install --legacy-peer-deps
 
 COPY . .
 RUN npm run build
