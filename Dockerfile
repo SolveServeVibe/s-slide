@@ -1,11 +1,15 @@
 FROM node:20-alpine AS s-slide-builder
 
+# Force cache rebuild - bump this when dependencies change
+ARG CACHEBUST=2024-06-04-3
+
 WORKDIR /app
 
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm install --legacy-peer-deps
+# Cache bust - change this value to force npm install to rerun
+RUN echo "${CACHEBUST}" && npm install --legacy-peer-deps
 
 COPY . .
 RUN npm run build
