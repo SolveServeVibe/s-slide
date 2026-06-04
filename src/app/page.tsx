@@ -32,6 +32,9 @@ export default function Home() {
       let assistantMessage = "";
       let buffer = "";
 
+      // Add placeholder for assistant message
+      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -51,7 +54,12 @@ export default function Home() {
               const data = JSON.parse(jsonStr);
               if (data.content) {
                 assistantMessage += data.content;
-                setMessages(prev => [...prev, { role: "assistant", content: assistantMessage }]);
+                // Update only the last message
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = { role: "assistant", content: assistantMessage };
+                  return newMessages;
+                });
               }
             } catch (e) {
               console.error("Parse error:", e, "Line:", trimmed);
@@ -59,13 +67,27 @@ export default function Home() {
           } else {
             // Plain text fallback
             assistantMessage += trimmed;
-            setMessages(prev => [...prev, { role: "assistant", content: assistantMessage }]);
+            // Update only the last message
+            setMessages(prev => {
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1] = { role: "assistant", content: assistantMessage };
+              return newMessages;
+            });
           }
         }
       }
     } catch (error) {
       console.error("Error:", error);
-      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // If last message is empty assistant message, replace it with error
+        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === "assistant" && !newMessages[newMessages.length - 1].content) {
+          newMessages[newMessages.length - 1] = { role: "assistant", content: "Sorry, something went wrong. Please try again." };
+        } else {
+          newMessages.push({ role: "assistant", content: "Sorry, something went wrong. Please try again." });
+        }
+        return newMessages;
+      });
     } finally {
       setIsLoading(false);
     }
