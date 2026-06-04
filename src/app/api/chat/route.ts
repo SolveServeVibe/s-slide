@@ -31,7 +31,7 @@ Be friendly, concise, and helpful. Focus on delivering working presentations qui
 For now, respond with text about what presentation you would create. The actual PowerPoint generation will be added soon.`;
 
   const result = streamText({
-    model: bedrock("anthropic.claude-3-5-sonnet-20241022-v2:0"),
+    model: bedrock("global.anthropic.claude-sonnet-4-6"),
     system: systemPrompt,
     messages
   });
