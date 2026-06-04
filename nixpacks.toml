@@ -13,6 +13,3 @@ cmds = ["npm run start"]
 [variables]
 NODE_ENV = "production"
 PORT = "3000"
-
-[static]
-# No static files to serve
