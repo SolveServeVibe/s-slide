@@ -1,6 +1,9 @@
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x", "openssl"]
 
+[phases.install]
+cmds = ["npm ci"]
+
 [phases.build]
 cmds = ["npm run build"]
 
@@ -10,3 +13,6 @@ cmds = ["npm run start"]
 [variables]
 NODE_ENV = "production"
 PORT = "3000"
+
+[static]
+# No static files to serve
