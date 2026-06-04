@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     // Return download URL
     return NextResponse.json({
       success: true,
-      downloadUrl: `/presentations/${filename}`,
+      downloadUrl: `/api/presentations/${filename}`,
       filename,
     });
   } catch (error) {
