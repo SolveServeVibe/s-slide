@@ -1,33 +1,25 @@
-import { executeAlmost, setGlobal } from "almostnode";
 import PptxGenJS from "pptxgenjs";
-
-// Set up PptxGenJS globally for almostnode
-const pptx = new PptxGenJS();
 
 export async function executePptxGenJSCode(code: string): Promise<Buffer> {
   try {
-    // Create a fresh instance for this execution
-    const freshPptx = new PptxGenJS();
+    // Create a function that will execute the code with PptxGenJS available
+    const pptx = new PptxGenJS();
 
-    // Execute the code in sandbox
-    const result = await executeAlmost(code, {
-      timeout: 30000,
-      globals: {
-        pptx: freshPptx,
-        pptxgenjs: PptxGenJS,
-      },
-    });
+    // Create an async function that takes pptx as a parameter
+    const executeCode = new Function('pptx', 'pptxgenjs', `
+      return (async () => {
+        ${code}
+        return pptx.write({ outputType: 'nodebuffer' });
+      })();
+    `);
 
-    if (result.error) {
-      throw new Error(`Execution error: ${result.error}`);
-    }
+    // Execute the code with our PptxGenJS instance
+    const buffer = await executeCode(pptx, PptxGenJS);
 
-    // Generate the presentation
-    const buffer = await freshPptx.write({ outputType: "nodebuffer" });
-    return buffer as Buffer;
+    return Buffer.from(buffer);
   } catch (error) {
     console.error("Code execution failed:", error);
-    throw error;
+    throw new Error(`Execution failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
