@@ -18,7 +18,6 @@ export async function POST(req: Request) {
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   });
 
-  // AI generates structured presentation plan using professional methodology
   const { object: plan } = await generateObject({
     model: bedrock("global.anthropic.claude-sonnet-4-6"),
     schema: presentationSchema,
@@ -35,16 +34,23 @@ Follow this methodology strictly:
 7. Cite sources where applicable.
 8. The closing slide should reinforce the objective and include a call to action.
 
+DIAGRAMS: When a proof slide would benefit from a visual diagram (flowchart, architecture, timeline, org chart, comparison, etc.), include a Mermaid.js diagram in the image.mermaid field. Use these Mermaid diagram types:
+- flowchart TD / LR for processes and architectures
+- sequenceDiagram for interactions
+- gantt for timelines
+- pie for distributions
+- graph for relationships
+
 Slide types:
 - "title": Opening slide with presentation title
 - "fire": The hook - shocking stat, urgent problem, counterintuitive fact (dark background)
 - "claim": A bold statement/argument (purple accent bar, white bg)
-- "proof": Data/evidence supporting a claim (light purple bg)
+- "proof": Data/evidence supporting a claim (light purple bg) - USE MERmaid DIAGRAMS HERE
 - "closing": Summary + call to action (purple bg)`,
   });
 
-  // Build the PPTX using our design system
-  const pptx = buildPptx(plan as z.infer<typeof presentationSchema>);
+  // Build PPTX (async for mermaid rendering)
+  const pptx = await buildPptx(plan as z.infer<typeof presentationSchema>);
 
   const publicDir = join(process.cwd(), "public", "presentations");
   await mkdir(publicDir, { recursive: true });
