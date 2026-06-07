@@ -9,13 +9,6 @@ interface SlidePreview {
   bullets?: string[];
 }
 
-interface PresentationResult {
-  downloadUrl: string;
-  filename: string;
-  slides: SlidePreview[];
-  title: string;
-}
-
 const typeStyles: Record<string, { bg: string; text: string; accent: string }> = {
   title:   { bg: "bg-[#6B21A8]", text: "text-white",      accent: "text-purple-200" },
   fire:    { bg: "bg-[#1E1B2E]", text: "text-white",      accent: "text-amber-400" },
@@ -28,21 +21,25 @@ export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [presentation, setPresentation] = useState<PresentationResult | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [previewSlides, setPreviewSlides] = useState<SlidePreview[]>([]);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [presTitle, setPresTitle] = useState<string>("");
+  const [genStatus, setGenStatus] = useState<string>(""); // "streaming" | "building" | "done"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading || isGenerating) return;
+    if (!input.trim() || isLoading) return;
 
     const userMessage = { role: "user", content: input };
     setMessages(prev => [...prev, userMessage]);
     const query = input;
     setInput("");
     setIsLoading(true);
-    setPresentation(null);
+    setPreviewSlides([]);
+    setDownloadUrl(null);
+    setPresTitle("");
+    setGenStatus("streaming");
 
-    // Add placeholder for streaming chat response
     setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
     // Stream chat response
@@ -94,32 +91,59 @@ export default function Home() {
       setIsLoading(false);
     }
 
-    // Generate presentation from the latest user message
-    setIsGenerating(true);
+    // Stream presentation generation — slides appear incrementally
     try {
       const presRes = await fetch("/api/create-presentation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: query }),
       });
-      const data = await presRes.json();
-      if (data.success) {
-        setPresentation({
-          downloadUrl: data.downloadUrl,
-          filename: data.filename,
-          slides: data.slides,
-          title: data.title,
-        });
+
+      if (!presRes.ok || !presRes.body) return;
+
+      const reader = presRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          try {
+            const event = JSON.parse(t.slice(5).trim());
+
+            if (event.type === "slides" && event.slides) {
+              setPreviewSlides(event.slides);
+              if (event.slides[0]?.headline) {
+                setPresTitle(event.slides[0].headline);
+              }
+            } else if (event.type === "building") {
+              setGenStatus("building");
+            } else if (event.type === "done") {
+              setDownloadUrl(event.downloadUrl);
+              setGenStatus("done");
+            } else if (event.type === "error") {
+              setGenStatus("done");
+            }
+          } catch {}
+        }
       }
     } catch {
-      // User can retry
-    } finally {
-      setIsGenerating(false);
+      setGenStatus("done");
     }
   };
 
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, presentation]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, previewSlides]);
+
+  const isWorking = isLoading || (genStatus !== "" && genStatus !== "done");
+  const showBuildingSpinner = genStatus === "building" && !downloadUrl;
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -137,7 +161,7 @@ export default function Home() {
                 <div className="text-center text-gray-400 py-20">
                   <p className="text-lg mb-2">Describe your presentation</p>
                   <p className="text-sm">Try: &quot;Create a 5-slide deck about sustainable energy&quot;</p>
-                  <p className="text-xs mt-2 text-gray-300">You can iterate: &quot;Add a slide about costs&quot; or &quot;Make it more technical&quot;</p>
+                  <p className="text-xs mt-2 text-gray-300">Iterate: &quot;Add a slide about costs&quot; or &quot;Make it more technical&quot;</p>
                 </div>
               )}
               {messages.map((m, i) => (
@@ -155,11 +179,11 @@ export default function Home() {
                   </div>
                 </div>
               ))}
-              {isGenerating && (
+              {isWorking && (
                 <div className="flex justify-start">
                   <div className="px-4 py-2 bg-purple-50 text-purple-700 rounded-xl flex items-center gap-2 text-sm">
                     <span className="inline-block w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                    Generating slides...
+                    {isLoading ? "Thinking..." : showBuildingSpinner ? "Building PPTX..." : "Generating slides..."}
                   </div>
                 </div>
               )}
@@ -171,18 +195,18 @@ export default function Home() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   placeholder="Describe or refine your presentation..."
-                  disabled={isLoading || isGenerating}
+                  disabled={isWorking}
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-50"
                 />
                 <button
                   type="submit"
-                  disabled={isLoading || isGenerating || !input.trim()}
+                  disabled={isWorking || !input.trim()}
                   className="px-6 py-3 bg-purple-500 text-white rounded-xl hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium"
                 >
-                  {isLoading || isGenerating ? (
+                  {isWorking ? (
                     <span className="flex items-center gap-2">
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      {isLoading ? "Thinking..." : "Building..."}
+                      {isLoading ? "Thinking..." : showBuildingSpinner ? "Building..." : "Creating..."}
                     </span>
                   ) : "Create"}
                 </button>
@@ -194,11 +218,11 @@ export default function Home() {
           <div className="bg-white rounded-2xl shadow-lg flex flex-col">
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h2 className="font-semibold text-gray-700">
-                {presentation ? presentation.title : "Slide Preview"}
+                {presTitle || "Slide Preview"}
               </h2>
-              {presentation && (
+              {downloadUrl && (
                 <a
-                  href={presentation.downloadUrl}
+                  href={downloadUrl}
                   download
                   className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium no-underline"
                 >
@@ -207,22 +231,23 @@ export default function Home() {
               )}
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {!presentation && !isGenerating && (
+              {previewSlides.length === 0 && !isWorking && (
                 <div className="text-center text-gray-400 py-20">
                   <p className="text-lg mb-2">Slides appear here</p>
                   <p className="text-sm">Chat with AI to generate your deck</p>
                 </div>
               )}
-              {isGenerating && !presentation && (
+              {previewSlides.length === 0 && genStatus === "streaming" && (
                 <div className="text-center text-gray-400 py-20">
                   <span className="inline-block w-8 h-8 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mb-4" />
                   <p>AI is designing your slides...</p>
                 </div>
               )}
-              {presentation?.slides.map((slide, i) => {
+              {previewSlides.map((slide, i) => {
                 const style = typeStyles[slide.type] ?? typeStyles.claim;
+                const isLast = i === previewSlides.length - 1;
                 return (
-                  <div key={i} className="rounded-lg overflow-hidden shadow-sm border border-gray-200">
+                  <div key={`${slide.type}-${i}`} className={`rounded-lg overflow-hidden shadow-sm border border-gray-200 transition-all duration-300 ${isLast && isWorking ? "ring-2 ring-purple-300" : ""}`}>
                     <div className={`relative ${style.bg} ${style.text} p-4`} style={{ aspectRatio: "16/9" }}>
                       {slide.type === "fire" && (
                         <span className="absolute top-3 left-3 text-2xl">&#x1F525;</span>
@@ -256,12 +281,18 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="px-3 py-1 bg-gray-50 text-xs text-gray-400 flex justify-between border-t border-gray-100">
-                      <span>Slide {i + 1} of {presentation.slides.length}</span>
+                      <span>Slide {i + 1} of {previewSlides.length}</span>
                       <span className="uppercase tracking-wide font-medium">{slide.type}</span>
                     </div>
                   </div>
                 );
               })}
+              {showBuildingSpinner && previewSlides.length > 0 && (
+                <div className="text-center py-3 text-sm text-gray-400 flex items-center justify-center gap-2">
+                  <span className="inline-block w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                  Building PPTX file...
+                </div>
+              )}
             </div>
           </div>
         </div>

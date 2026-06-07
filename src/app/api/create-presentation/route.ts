@@ -1,43 +1,35 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
-import { generateObject } from "ai";
+import { streamObject } from "ai";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import PptxGenJS from "pptxgenjs";
 
 export const runtime = "nodejs";
 
+const slideSchema = z.object({
+  type: z.enum(["title", "fire", "claim", "proof", "closing"]),
+  headline: z.string(),
+  bullets: z.array(z.string()).optional(),
+});
+
 const presentationCodeSchema = z.object({
   audience: z.string(),
   objective: z.string(),
-  code: z.string().describe("PptxGenJS code using C and D variables for design consistency"),
-  slides: z.array(z.object({
-    type: z.enum(["title", "fire", "claim", "proof", "closing"]),
-    headline: z.string(),
-    bullets: z.array(z.string()).optional(),
-  })).describe("Slide summaries for preview"),
+  slides: z.array(slideSchema).describe("Slide summaries — generate these FIRST"),
+  code: z.string().describe("PptxGenJS code using C, D, L variables for design consistency"),
 });
 
-// Design system — injected into code execution context
 const DESIGN_SYSTEM = {
   colors: {
-    purple: "6B21A8",
-    purpleLight: "7C3AED",
-    purplePale: "A78BFA",
-    purpleMist: "F3F0FF",
-    white: "FFFFFF",
-    dark: "1E1B2E",
-    gray: "555555",
-    grayLight: "999999",
-    accent: "F59E0B",
+    purple: "6B21A8", purpleLight: "7C3AED", purplePale: "A78BFA",
+    purpleMist: "F3F0FF", white: "FFFFFF", dark: "1E1B2E",
+    gray: "555555", grayLight: "999999", accent: "F59E0B",
   },
   font: "Arial",
   layout: {
     wide: "LAYOUT_WIDE",
-    safeX: 0.7,
-    safeY: 0.5,
     titleHeadline: { x: 1, y: 1.8, w: 11, h: 2, fontSize: 40 },
     titleSubtitle: { x: 1, y: 3.8, w: 11, h: 1, fontSize: 18 },
     headline: { x: 0.7, y: 0.5, w: 11.5, h: 1.2, fontSize: 28 },
@@ -63,50 +55,84 @@ export async function POST(req: Request) {
   await mkdir(publicDir, { recursive: true });
   const filename = `presentation-${randomUUID()}.pptx`;
 
-  try {
-    console.log("[create-presentation] Calling Bedrock...");
-    const { object } = await generateObject({
-      model: bedrock("global.anthropic.claude-sonnet-4-6"),
-      schema: presentationCodeSchema,
-      prompt: buildPrompt(message),
-    });
+  const result = streamObject({
+    model: bedrock("global.anthropic.claude-sonnet-4-6"),
+    schema: presentationCodeSchema,
+    prompt: buildPrompt(message),
+  });
 
-    console.log("[create-presentation] Got code, executing... Slides:", object.slides.length);
+  const encoder = new TextEncoder();
 
-    const fn = new Function(
-      "PptxGenJS", "C", "D", "L",
-      `"use strict"; return (async () => { ${object.code} })();`
-    );
-    const pptx = await fn(PptxGenJS, DESIGN_SYSTEM.colors, DESIGN_SYSTEM, DESIGN_SYSTEM.layout);
+  const stream = new ReadableStream({
+    async start(controller) {
+      let fullCode = "";
+      let lastSlideCount = 0;
 
-    if (!pptx || typeof pptx.write !== "function") {
-      throw new Error("Generated code did not return a PptxGenJS instance");
-    }
+      try {
+        for await (const partial of result.partialObjectStream) {
+          // Stream new slides to the client as they appear
+          const slides = partial.slides;
+          if (slides && slides.length > lastSlideCount) {
+            lastSlideCount = slides.length;
+            controller.enqueue(encoder.encode(
+              `data: ${JSON.stringify({ type: "slides", slides, total: slides.length })}\n\n`
+            ));
+          }
+          if (partial.code) fullCode = partial.code;
+        }
 
-    const buffer = Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
-    await writeFile(join(publicDir, filename), buffer);
+        // All slides streamed — now execute the code and build the PPTX
+        controller.enqueue(encoder.encode(
+          `data: ${JSON.stringify({ type: "building" })}\n\n`
+        ));
 
-    console.log("[create-presentation] Done. File:", filename, "Size:", buffer.length);
+        console.log("[create-presentation] Executing code, slides:", lastSlideCount);
 
-    return NextResponse.json({
-      success: true,
-      downloadUrl: `/api/presentations/${filename}`,
-      filename,
-      slides: object.slides,
-      title: object.slides[0]?.headline ?? "Presentation",
-      plan: { audience: object.audience, objective: object.objective },
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Generation failed";
-    console.error("[create-presentation] Error:", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+        const fn = new Function(
+          "PptxGenJS", "C", "D", "L",
+          `"use strict"; return (async () => { ${fullCode} })();`
+        );
+        const pptx = await fn(PptxGenJS, DESIGN_SYSTEM.colors, DESIGN_SYSTEM, DESIGN_SYSTEM.layout);
+
+        if (!pptx || typeof pptx.write !== "function") {
+          throw new Error("Generated code did not return a PptxGenJS instance");
+        }
+
+        const buffer = Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
+        await writeFile(join(publicDir, filename), buffer);
+
+        console.log("[create-presentation] Done. File:", filename, "Size:", buffer.length);
+
+        controller.enqueue(encoder.encode(
+          `data: ${JSON.stringify({
+            type: "done",
+            downloadUrl: `/api/presentations/${filename}`,
+            filename,
+            title: "Presentation",
+          })}\n\n`
+        ));
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Generation failed";
+        console.error("[create-presentation] Error:", msg);
+        controller.enqueue(encoder.encode(
+          `data: ${JSON.stringify({ type: "error", error: msg })}\n\n`
+        ));
+      }
+
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+  });
 }
 
 function buildPrompt(message: string): string {
   return `Create a professional presentation for: "${message}"
 
-Generate a JSON object with: audience, objective, code, slides.
+Generate a JSON object with: audience, objective, slides, code.
+IMPORTANT: Generate "slides" array FIRST (for live preview), then "code" last.
 
 The "code" field contains PptxGenJS JavaScript. It receives these variables:
 
@@ -132,7 +158,7 @@ L (layout) — preset coordinates:
   L.slideNum       = { x:11.5, y:7, w:0.5, h:0.3, fontSize:10 }
   L.source         = { x:0.7, y:6.3, w:11.5, h:0.3, fontSize:9 }
 
-Use spread to apply: slide.addText("Title", { ...L.titleHeadline, color: C.white, bold: true, fontFace: D.font, align: "center" });
+Use spread: slide.addText("Title", { ...L.titleHeadline, color: C.white, bold: true, fontFace: D.font, align: "center" });
 
 DESIGN METHODOLOGY:
 1. FIRE opener: shocking statistic, counterintuitive fact, or urgent problem
