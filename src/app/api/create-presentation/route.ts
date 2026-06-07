@@ -18,28 +18,83 @@ const presentationCodeSchema = z.object({
   audience: z.string(),
   objective: z.string(),
   slides: z.array(slideSchema).describe("Slide summaries — generate these FIRST"),
-  code: z.string().describe("PptxGenJS code using C, D, L variables for design consistency"),
+  code: z.string().describe("PptxGenJS code calling the injected builder functions"),
 });
 
-const DESIGN_SYSTEM = {
-  colors: {
-    purple: "6B21A8", purpleLight: "7C3AED", purplePale: "A78BFA",
-    purpleMist: "F3F0FF", white: "FFFFFF", dark: "1E1B2E",
-    gray: "555555", grayLight: "999999", accent: "F59E0B",
-  },
-  font: "Arial",
-  layout: {
-    wide: "LAYOUT_WIDE",
-    titleHeadline: { x: 1, y: 1.8, w: 11, h: 2, fontSize: 40 },
-    titleSubtitle: { x: 1, y: 3.8, w: 11, h: 1, fontSize: 18 },
-    headline: { x: 0.7, y: 0.5, w: 11.5, h: 1.2, fontSize: 28 },
-    body: { x: 0.7, y: 2.1, w: 11.5, h: 3.5, fontSize: 16 },
-    divider: { x: 0.7, y: 1.8, w: 1.5, h: 0.04 },
-    accentBar: { x: 0, y: 0, w: 0.12, h: "100%" },
-    slideNum: { x: 11.5, y: 7, w: 0.5, h: 0.3, fontSize: 10 },
-    source: { x: 0.7, y: 6.3, w: 11.5, h: 0.3, fontSize: 9 },
-  },
+// Design constants — injected into code context
+const C = {
+  purple: "6B21A8", purpleLight: "7C3AED", purplePale: "A78BFA",
+  purpleMist: "F3F0FF", white: "FFFFFF", dark: "1E1B2E",
+  gray: "555555", grayLight: "999999", accent: "F59E0B",
 };
+
+// Builder functions injected into code context — guarantee design consistency
+// These handle ALL styling so the LLM only provides content
+const BUILDER_CODE = `
+const F = "Arial";
+
+function titleSlide(pptx, headline, subtitle) {
+  const s = pptx.addSlide();
+  s.background = { fill: C.purple };
+  s.addText(headline, { x: 1, y: 1.8, w: 11, h: 2, fontSize: 40, bold: true, color: C.white, fontFace: F, align: "center" });
+  if (subtitle) s.addText(subtitle, { x: 1, y: 3.8, w: 11, h: 1, fontSize: 18, color: C.purplePale, fontFace: F, align: "center" });
+  return s;
+}
+
+function fireSlide(pptx, headline, body, source) {
+  const s = pptx.addSlide();
+  s.background = { fill: C.dark };
+  s.addText("\u{1F525}", { x: 0.8, y: 1.5, w: 1, h: 1, fontSize: 48 });
+  s.addText(headline, { x: 1.8, y: 1.5, w: 9.5, h: 2, fontSize: 36, bold: true, color: C.white, fontFace: F });
+  s.addShape(pptx.ShapeType.rect, { x: 1.8, y: 3.2, w: 2, h: 0.05, fill: { type: "solid", color: C.accent } });
+  if (body) s.addText(body, { x: 1.8, y: 3.6, w: 9.5, h: 1.5, fontSize: 18, color: C.grayLight, fontFace: F, lineSpacingMultiple: 1.4 });
+  if (source) s.addText(source, { x: 1.8, y: 5.5, w: 9.5, h: 0.3, fontSize: 10, color: C.grayLight, fontFace: F, italic: true });
+  return s;
+}
+
+function claimSlide(pptx, headline, bullets, source, slideNum) {
+  const s = pptx.addSlide();
+  s.background = { fill: C.white };
+  s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.12, h: "100%", fill: { type: "solid", color: C.purpleLight } });
+  s.addText(headline, { x: 0.7, y: 0.5, w: 11.5, h: 1.2, fontSize: 28, bold: true, color: C.purple, fontFace: F });
+  s.addShape(pptx.ShapeType.rect, { x: 0.7, y: 1.8, w: 1.5, h: 0.04, fill: { type: "solid", color: C.purplePale } });
+  if (bullets && bullets.length > 0) {
+    s.addText(
+      bullets.map(b => ({ text: b, options: { fontSize: 15, color: C.gray, fontFace: F, bullet: { code: "25CF" }, paraSpaceAfter: 8 } })),
+      { x: 0.7, y: 2.1, w: 11.5, h: 3.5, valign: "top" }
+    );
+  }
+  if (source) s.addText(source, { x: 0.7, y: 6.3, w: 11.5, h: 0.3, fontSize: 9, color: C.grayLight, fontFace: F, italic: true });
+  if (slideNum) s.addText(String(slideNum), { x: 11.5, y: 7, w: 0.5, h: 0.3, fontSize: 10, color: C.grayLight, fontFace: F, align: "right" });
+  return s;
+}
+
+function proofSlide(pptx, headline, bullets, source, slideNum) {
+  const s = pptx.addSlide();
+  s.background = { fill: C.purpleMist };
+  s.addText(headline, { x: 0.7, y: 0.5, w: 11.5, h: 0.8, fontSize: 24, bold: true, color: C.purple, fontFace: F });
+  s.addShape(pptx.ShapeType.rect, { x: 0.7, y: 1.4, w: 1.5, h: 0.04, fill: { type: "solid", color: C.purplePale } });
+  if (bullets && bullets.length > 0) {
+    s.addText(
+      bullets.map(b => ({ text: b, options: { fontSize: 14, color: C.gray, fontFace: F, bullet: { code: "25CF" }, paraSpaceAfter: 6 } })),
+      { x: 0.7, y: 2.2, w: 11.5, h: 3.5, valign: "top" }
+    );
+  }
+  if (source) s.addText(source, { x: 0.7, y: 6.3, w: 11.5, h: 0.3, fontSize: 9, color: C.grayLight, fontFace: F, italic: true });
+  if (slideNum) s.addText(String(slideNum), { x: 11.5, y: 7, w: 0.5, h: 0.3, fontSize: 10, color: C.grayLight, fontFace: F, align: "right" });
+  return s;
+}
+
+function closingSlide(pptx, headline, subtitle, callToAction) {
+  const s = pptx.addSlide();
+  s.background = { fill: C.purple };
+  s.addText(headline, { x: 1, y: 1.8, w: 11, h: 1.5, fontSize: 40, bold: true, color: C.white, fontFace: F, align: "center" });
+  if (subtitle) s.addText(subtitle, { x: 1, y: 3.5, w: 11, h: 1, fontSize: 16, color: C.purplePale, fontFace: F, align: "center" });
+  if (callToAction) s.addText(callToAction, { x: 1, y: 5, w: 11, h: 0.5, fontSize: 14, color: C.purplePale, fontFace: F, align: "center", italic: true });
+  s.addText("Created with s-slide", { x: 1, y: 6.5, w: 11, h: 0.4, fontSize: 11, color: C.purplePale, fontFace: F, align: "center" });
+  return s;
+}
+`;
 
 export async function POST(req: Request) {
   const { message } = await req.json();
@@ -70,18 +125,16 @@ export async function POST(req: Request) {
 
       try {
         for await (const partial of result.partialObjectStream) {
-          // Stream new slides to the client as they appear
           const slides = partial.slides;
           if (slides && slides.length > lastSlideCount) {
             lastSlideCount = slides.length;
             controller.enqueue(encoder.encode(
-              `data: ${JSON.stringify({ type: "slides", slides, total: slides.length })}\n\n`
+              `data: ${JSON.stringify({ type: "slides", slides })}\n\n`
             ));
           }
           if (partial.code) fullCode = partial.code;
         }
 
-        // All slides streamed — now execute the code and build the PPTX
         controller.enqueue(encoder.encode(
           `data: ${JSON.stringify({ type: "building" })}\n\n`
         ));
@@ -89,10 +142,10 @@ export async function POST(req: Request) {
         console.log("[create-presentation] Executing code, slides:", lastSlideCount);
 
         const fn = new Function(
-          "PptxGenJS", "C", "D", "L",
-          `"use strict"; return (async () => { ${fullCode} })();`
+          "PptxGenJS", "C",
+          `"use strict"; ${BUILDER_CODE} return (async () => { ${fullCode} })();`
         );
-        const pptx = await fn(PptxGenJS, DESIGN_SYSTEM.colors, DESIGN_SYSTEM, DESIGN_SYSTEM.layout);
+        const pptx = await fn(PptxGenJS, C);
 
         if (!pptx || typeof pptx.write !== "function") {
           throw new Error("Generated code did not return a PptxGenJS instance");
@@ -108,7 +161,6 @@ export async function POST(req: Request) {
             type: "done",
             downloadUrl: `/api/presentations/${filename}`,
             filename,
-            title: "Presentation",
           })}\n\n`
         ));
       } catch (error: unknown) {
@@ -134,31 +186,43 @@ function buildPrompt(message: string): string {
 Generate a JSON object with: audience, objective, slides, code.
 IMPORTANT: Generate "slides" array FIRST (for live preview), then "code" last.
 
-The "code" field contains PptxGenJS JavaScript. It receives these variables:
+The "code" field calls INJECTED BUILDER FUNCTIONS. They handle ALL styling automatically.
+You ONLY provide content — colors, fonts, positions are locked in.
 
-C (colors) — USE THESE FOR ALL COLORS, never hardcode hex:
-  C.purple    = "6B21A8"  (title bg, primary headings)
-  C.purpleLight = "7C3AED" (accent bars, left sidebar)
-  C.purplePale  = "A78BFA" (secondary accent)
-  C.purpleMist  = "F3F0FF" (proof slide bg)
-  C.white     = "FFFFFF"
-  C.dark      = "1E1B2E"  (fire slide bg)
-  C.gray      = "555555"  (body text)
-  C.grayLight = "999999"  (secondary text, sources)
-  C.accent    = "F59E0B"  (fire accent bar)
+AVAILABLE FUNCTIONS (already defined — just call them):
 
-D (design system) — D.font = "Arial", D.colors = C, D.layout = L
-L (layout) — preset coordinates:
-  L.titleHeadline  = { x:1, y:1.8, w:11, h:2, fontSize:40 }
-  L.titleSubtitle  = { x:1, y:3.8, w:11, h:1, fontSize:18 }
-  L.headline       = { x:0.7, y:0.5, w:11.5, h:1.2, fontSize:28 }
-  L.body           = { x:0.7, y:2.1, w:11.5, h:3.5, fontSize:16 }
-  L.divider        = { x:0.7, y:1.8, w:1.5, h:0.04 }
-  L.accentBar      = { x:0, y:0, w:0.12, h:"100%" }
-  L.slideNum       = { x:11.5, y:7, w:0.5, h:0.3, fontSize:10 }
-  L.source         = { x:0.7, y:6.3, w:11.5, h:0.3, fontSize:9 }
+titleSlide(pptx, headline, subtitle?)
+  Purple bg, centered white headline, purplePale subtitle
 
-Use spread: slide.addText("Title", { ...L.titleHeadline, color: C.white, bold: true, fontFace: D.font, align: "center" });
+fireSlide(pptx, headline, body?, source?)
+  Dark bg, fire emoji, white headline, orange accent bar, grayLight body
+
+claimSlide(pptx, headline, bullets?, source?, slideNum?)
+  White bg, purpleLight left accent bar, purple headline, gray bullets
+
+proofSlide(pptx, headline, bullets?, source?, slideNum?)
+  PurpleMist bg, purple headline, gray bullets
+
+closingSlide(pptx, headline, subtitle?, callToAction?)
+  Purple bg, centered white headline, purplePale subtitle
+
+EXAMPLE CODE:
+const pptx = new PptxGenJS();
+pptx.layout = "LAYOUT_WIDE";
+pptx.author = "s-slide AI";
+pptx.title = "Proxmox in the Homelab";
+
+titleSlide(pptx, "Proxmox in the Homelab", "Open-Source Virtualization Powerhouse");
+fireSlide(pptx, "You're Wasting 90% of Your Hardware", "Most servers run at <10% CPU utilization...");
+claimSlide(pptx, "Proxmox Is the #1 Choice", ["Enterprise-grade KVM + LXC", "Zero licensing cost"], null, 3);
+proofSlide(pptx, "Proxmox vs Competition", ["Free vs VMware $995+/yr", "Active community"], "proxmox.com", 4);
+closingSlide(pptx, "Start Your Homelab Journey", "Enterprise power, zero cost", "Download at proxmox.com");
+
+return pptx;
+
+For tables or custom layouts you CAN use raw PptxGenJS (pptx.addSlide(), slide.addTable, etc.)
+but ONLY use these colors: C.purple, C.purpleLight, C.purplePale, C.purpleMist, C.white, C.dark, C.gray, C.grayLight, C.accent
+and ALWAYS use fontFace: "Arial".
 
 DESIGN METHODOLOGY:
 1. FIRE opener: shocking statistic, counterintuitive fact, or urgent problem
@@ -168,29 +232,10 @@ DESIGN METHODOLOGY:
 5. Use REAL facts, data, specific numbers. Cite sources.
 6. Closing reinforces objective with call to action
 
-SLIDE TYPES:
-Title:  bg C.purple, centered white headline (...L.titleHeadline), subtitle in C.purplePale
-Fire:   bg C.dark, fire emoji, white bold headline, C.accent underline bar, C.grayLight body
-Claim:  bg C.white, C.purpleLight left bar (...L.accentBar), C.purple headline, C.gray bullets
-Proof:  bg C.purpleMist, C.purple headline, evidence in bullets or tables
-Closing: bg C.purple, centered white headline, C.purplePale subtitle
-
-PptxGenJS API:
-  const pptx = new PptxGenJS();
-  pptx.layout = "LAYOUT_WIDE"; pptx.author = "s-slide AI"; pptx.title = "...";
-  const slide = pptx.addSlide();
-  slide.background = { fill: C.purple };
-  slide.addText("text", { ...L.titleHeadline, color: C.white, fontFace: D.font, align: "center" });
-  slide.addText([{ text: "Point", options: { fontSize:15, color:C.gray, fontFace:D.font, bullet:{code:"25CF"}, paraSpaceAfter:8 }}], { ...L.body, valign:"top" });
-  slide.addShape(pptx.ShapeType.rect, { ...L.accentBar, fill:{type:"solid",color:C.purpleLight} });
-  slide.addTable([["H1","H2"],["D1","D2"]], { x:0.7, y:2, w:11.5, fontSize:12, fontFace:D.font, border:{pt:0.5,color:"E5E7EB"} });
-  return pptx; // MANDATORY last line
-
 CRITICAL RULES:
-- ALWAYS use C.purple, C.white, etc. — NEVER hardcode hex colors like "6B21A8"
-- ALWAYS use fontFace: D.font — NEVER hardcode "Arial"
-- ALWAYS use L.* for positions — consistent spacing across slides
-- NEVER use require(), import, process, or fs
+- Use the builder functions (titleSlide, fireSlide, etc.) for all standard slides
+- NEVER hardcode colors — use C.purple, C.white, etc. if you need raw PptxGenJS
+- NEVER hardcode "Arial" — use the F variable
 - End with: return pptx;
-- Create as many slides as needed to cover the topic thoroughly.`;
+- Create as many slides as needed`;
 }

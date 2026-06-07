@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
 
 interface SlidePreview {
   type: "title" | "fire" | "claim" | "proof" | "closing";
@@ -20,90 +19,41 @@ const typeStyles: Record<string, { bg: string; text: string; accent: string }> =
 export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [previewSlides, setPreviewSlides] = useState<SlidePreview[]>([]);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [presTitle, setPresTitle] = useState<string>("");
-  const [genStatus, setGenStatus] = useState<string>(""); // "streaming" | "building" | "done"
+  const [genStatus, setGenStatus] = useState<string>("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || genStatus !== "") return;
 
-    const userMessage = { role: "user", content: input };
-    setMessages(prev => [...prev, userMessage]);
     const query = input;
+    setMessages(prev => [...prev, { role: "user", content: query }]);
     setInput("");
-    setIsLoading(true);
     setPreviewSlides([]);
     setDownloadUrl(null);
     setPresTitle("");
     setGenStatus("streaming");
 
-    setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-
-    // Stream chat response
+    // Single LLM call — slides stream in via SSE
     try {
-      const chatRes = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMessage] }),
-      });
-
-      if (chatRes.ok) {
-        const reader = chatRes.body?.getReader();
-        if (reader) {
-          const decoder = new TextDecoder();
-          let text = "";
-          let buf = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const lines = buf.split("\n");
-            buf = lines.pop() || "";
-            for (const line of lines) {
-              const t = line.trim();
-              if (!t.startsWith("data:")) continue;
-              try {
-                const d = JSON.parse(t.slice(5).trim());
-                if (d.content) {
-                  text += d.content;
-                  setMessages(prev => {
-                    const u = [...prev];
-                    u[u.length - 1] = { role: "assistant", content: text };
-                    return u;
-                  });
-                }
-              } catch {}
-            }
-          }
-        }
-      }
-    } catch {
-      setMessages(prev => {
-        const u = [...prev];
-        u[u.length - 1] = { role: "assistant", content: "Something went wrong. Try again." };
-        return u;
-      });
-    } finally {
-      setIsLoading(false);
-    }
-
-    // Stream presentation generation — slides appear incrementally
-    try {
-      const presRes = await fetch("/api/create-presentation", {
+      const res = await fetch("/api/create-presentation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: query }),
       });
 
-      if (!presRes.ok || !presRes.body) return;
+      if (!res.ok || !res.body) {
+        setGenStatus("done");
+        setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong. Try again." }]);
+        return;
+      }
 
-      const reader = presRes.body.getReader();
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let slideCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -120,6 +70,7 @@ export default function Home() {
 
             if (event.type === "slides" && event.slides) {
               setPreviewSlides(event.slides);
+              slideCount = event.slides.length;
               if (event.slides[0]?.headline) {
                 setPresTitle(event.slides[0].headline);
               }
@@ -128,22 +79,31 @@ export default function Home() {
             } else if (event.type === "done") {
               setDownloadUrl(event.downloadUrl);
               setGenStatus("done");
+              setMessages(prev => [...prev, {
+                role: "assistant",
+                content: `Done! Generated ${slideCount} slides. Download the .pptx or preview on the right.`,
+              }]);
             } else if (event.type === "error") {
               setGenStatus("done");
+              setMessages(prev => [...prev, {
+                role: "assistant",
+                content: `Error: ${event.error}. Try again.`,
+              }]);
             }
           } catch {}
         }
       }
     } catch {
       setGenStatus("done");
+      setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong. Try again." }]);
     }
   };
 
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, previewSlides]);
 
-  const isWorking = isLoading || (genStatus !== "" && genStatus !== "done");
-  const showBuildingSpinner = genStatus === "building" && !downloadUrl;
+  const isWorking = genStatus !== "" && genStatus !== "done";
+  const showBuilding = genStatus === "building" && !downloadUrl;
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -160,8 +120,7 @@ export default function Home() {
               {messages.length === 0 && (
                 <div className="text-center text-gray-400 py-20">
                   <p className="text-lg mb-2">Describe your presentation</p>
-                  <p className="text-sm">Try: &quot;Create a 5-slide deck about sustainable energy&quot;</p>
-                  <p className="text-xs mt-2 text-gray-300">Iterate: &quot;Add a slide about costs&quot; or &quot;Make it more technical&quot;</p>
+                  <p className="text-sm">Try: &quot;Create a presentation about sustainable energy&quot;</p>
                 </div>
               )}
               {messages.map((m, i) => (
@@ -169,13 +128,7 @@ export default function Home() {
                   <div className={`max-w-[90%] rounded-2xl px-4 py-3 ${
                     m.role === "user" ? "bg-purple-100 text-gray-900" : "bg-gray-50 text-gray-900"
                   }`}>
-                    {m.role === "assistant" ? (
-                      <div className="prose prose-sm max-w-none prose-headings:text-purple-700 prose-a:text-purple-600">
-                        <ReactMarkdown>{m.content || (isLoading ? "..." : "")}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div>{m.content}</div>
-                    )}
+                    <div>{m.content}</div>
                   </div>
                 </div>
               ))}
@@ -183,7 +136,7 @@ export default function Home() {
                 <div className="flex justify-start">
                   <div className="px-4 py-2 bg-purple-50 text-purple-700 rounded-xl flex items-center gap-2 text-sm">
                     <span className="inline-block w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                    {isLoading ? "Thinking..." : showBuildingSpinner ? "Building PPTX..." : "Generating slides..."}
+                    {showBuilding ? "Building PPTX..." : "Generating slides..."}
                   </div>
                 </div>
               )}
@@ -194,7 +147,7 @@ export default function Home() {
                 <input
                   value={input}
                   onChange={e => setInput(e.target.value)}
-                  placeholder="Describe or refine your presentation..."
+                  placeholder="Describe your presentation..."
                   disabled={isWorking}
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-50"
                 />
@@ -206,7 +159,7 @@ export default function Home() {
                   {isWorking ? (
                     <span className="flex items-center gap-2">
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      {isLoading ? "Thinking..." : showBuildingSpinner ? "Building..." : "Creating..."}
+                      {showBuilding ? "Building..." : "Creating..."}
                     </span>
                   ) : "Create"}
                 </button>
@@ -234,10 +187,10 @@ export default function Home() {
               {previewSlides.length === 0 && !isWorking && (
                 <div className="text-center text-gray-400 py-20">
                   <p className="text-lg mb-2">Slides appear here</p>
-                  <p className="text-sm">Chat with AI to generate your deck</p>
+                  <p className="text-sm">Describe a presentation to get started</p>
                 </div>
               )}
-              {previewSlides.length === 0 && genStatus === "streaming" && (
+              {previewSlides.length === 0 && isWorking && (
                 <div className="text-center text-gray-400 py-20">
                   <span className="inline-block w-8 h-8 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mb-4" />
                   <p>AI is designing your slides...</p>
@@ -287,7 +240,7 @@ export default function Home() {
                   </div>
                 );
               })}
-              {showBuildingSpinner && previewSlides.length > 0 && (
+              {showBuilding && previewSlides.length > 0 && (
                 <div className="text-center py-3 text-sm text-gray-400 flex items-center justify-center gap-2">
                   <span className="inline-block w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                   Building PPTX file...
