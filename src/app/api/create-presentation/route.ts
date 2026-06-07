@@ -1,5 +1,5 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
-import { generateText, tool } from "ai";
+import { generateObject } from "ai";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -9,8 +9,20 @@ import PptxGenJS from "pptxgenjs";
 
 export const runtime = "nodejs";
 
+const presentationCodeSchema = z.object({
+  audience: z.string(),
+  objective: z.string(),
+  code: z.string().describe("Complete PptxGenJS JavaScript code creating the presentation. Must start with 'const pptx = new PptxGenJS();' and end with 'return pptx;'"),
+  slides: z.array(z.object({
+    type: z.enum(["title", "fire", "claim", "proof", "closing"]),
+    headline: z.string(),
+    bullets: z.array(z.string()).optional(),
+  })).describe("Summary of each slide for the live preview"),
+});
+
 export async function POST(req: Request) {
   const { message } = await req.json();
+  console.log("[create-presentation] Starting for:", message);
 
   const bedrock = createAmazonBedrock({
     region: process.env.AWS_REGION || "us-east-1",
@@ -23,56 +35,38 @@ export async function POST(req: Request) {
   const filename = `presentation-${randomUUID()}.pptx`;
 
   try {
-    const result = await generateText({
+    console.log("[create-presentation] Calling Bedrock...");
+    const { object } = await generateObject({
       model: bedrock("global.anthropic.claude-sonnet-4-6"),
-      tools: {
-        buildPresentation: tool({
-          description: "Build a PowerPoint presentation by writing PptxGenJS JavaScript code that gets executed server-side.",
-          inputSchema: z.object({
-            audience: z.string().describe("Target audience for the presentation"),
-            objective: z.string().describe("The one outcome this presentation achieves"),
-            code: z.string().describe("Complete PptxGenJS JavaScript code. Use 'const pptx = new PptxGenJS();' and end with 'return pptx;'"),
-            slides: z.array(z.object({
-              type: z.enum(["title", "fire", "claim", "proof", "closing"]),
-              headline: z.string(),
-              bullets: z.array(z.string()).optional(),
-            })).describe("Summary of each slide for the live preview"),
-          }),
-          execute: async ({ code, slides, audience, objective }) => {
-            const fn = new Function("PptxGenJS", `"use strict"; return (async () => { ${code} })();`);
-            const pptx = await fn(PptxGenJS);
-
-            if (!pptx || typeof pptx.write !== "function") {
-              throw new Error("Code did not return a valid PptxGenJS instance. Make sure to end with 'return pptx;'");
-            }
-
-            const buffer = Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
-            await writeFile(join(publicDir, filename), buffer);
-
-            return {
-              success: true,
-              downloadUrl: `/api/presentations/${filename}`,
-              filename,
-              slides,
-              title: slides[0]?.headline ?? "Presentation",
-              plan: { audience, objective },
-            };
-          },
-        }),
-      },
+      schema: presentationCodeSchema,
       prompt: buildPrompt(message),
     });
 
-    const toolResult = result.toolResults?.[0];
-    if (!toolResult || toolResult.type !== "tool-result") {
-      return NextResponse.json({ error: "No presentation generated" }, { status: 500 });
+    console.log("[create-presentation] Got code, executing... Slides:", object.slides.length);
+
+    const fn = new Function("PptxGenJS", `"use strict"; return (async () => { ${object.code} })();`);
+    const pptx = await fn(PptxGenJS);
+
+    if (!pptx || typeof pptx.write !== "function") {
+      throw new Error("Generated code did not return a PptxGenJS instance");
     }
 
-    const response = (toolResult as { output: Record<string, unknown> }).output;
-    return NextResponse.json(response);
+    const buffer = Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
+    await writeFile(join(publicDir, filename), buffer);
+
+    console.log("[create-presentation] Done. File:", filename, "Size:", buffer.length);
+
+    return NextResponse.json({
+      success: true,
+      downloadUrl: `/api/presentations/${filename}`,
+      filename,
+      slides: object.slides,
+      title: object.slides[0]?.headline ?? "Presentation",
+      plan: { audience: object.audience, objective: object.objective },
+    });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Generation failed";
-    console.error("Presentation error:", msg);
+    console.error("[create-presentation] Error:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
@@ -81,7 +75,11 @@ function buildPrompt(message: string): string {
   return `You are a world-class presentation designer and PptxGenJS expert.
 Create a professional, visually stunning presentation for: "${message}"
 
-You MUST call the buildPresentation tool to generate the PPTX file.
+You will generate a JSON object with:
+- audience: target audience
+- objective: desired outcome
+- code: complete PptxGenJS JavaScript code (see API reference below)
+- slides: array of slide summaries for the preview
 
 DESIGN METHODOLOGY (follow strictly):
 1. Define the audience and objective
@@ -92,8 +90,7 @@ DESIGN METHODOLOGY (follow strictly):
 6. Use REAL facts, data, specific numbers. Cite sources. No generic filler.
 7. Closing: reinforce objective, include call to action
 
-The "code" parameter must be complete, executable PptxGenJS JavaScript.
-The "slides" parameter must be an array summarizing each slide for the preview.
+The "code" field must contain complete, executable PptxGenJS JavaScript.
 
 PPTXGENJS API REFERENCE:
 Available as: PptxGenJS (the constructor is passed as a parameter — do NOT import it)
@@ -125,9 +122,6 @@ slide.addShape(pptx.ShapeType.rect, {
   fill: { type: "solid", color: "7C3AED" }
 });
 
-// Images (from URL)
-slide.addImage({ path: "https://...", x: 7.5, y: 1.5, w: 4.5, h: 3.5 });
-
 // Tables
 slide.addTable([["Header 1", "Header 2"], ["Data 1", "Data 2"]], {
   x: 0.7, y: 2, w: 11.5,
@@ -138,7 +132,7 @@ slide.addTable([["Header 1", "Header 2"], ["Data 1", "Data 2"]], {
   autoPage: false,
 });
 
-return pptx; // MANDATORY
+return pptx; // MANDATORY — must be the last line
 
 COLOR PALETTE:
 - purple: "6B21A8" — title bg, primary headings
@@ -153,13 +147,13 @@ COLOR PALETTE:
 
 SLIDE DESIGN GUIDE:
 Title: bg purple ("6B21A8"), large centered white headline (fontSize: 40), subtitle in purplePale
-Fire: bg dark ("1E1B2E"), addText "🔥" as emoji, white bold headline, orange accent bar (addShape rect), grayLight body
+Fire: bg dark ("1E1B2E"), addText with fire emoji, white bold headline, orange accent bar (addShape rect), grayLight body
 Claim: white bg, thin purpleLight left bar (addShape x=0, w=0.12, h="100%"), purple headline, gray bullets
 Proof: purpleMist bg ("F3F0FF"), purple headline, data/evidence — use tables or bullets for data
 Closing: purple bg, large white headline centered, purplePale subtitle, italic objective
 
 COORDINATE GUIDE (LAYOUT_WIDE: 13.33" × 7.5"):
-- Safe area: x: 0.7–12.5, y: 0.5–6.8
+- Safe area: x: 0.7-12.5, y: 0.5-6.8
 - Title: x: 1, y: 1.8, w: 11, h: 2
 - Body: x: 0.7, y: 2.1, w: 11.5, h: 3.5
 - Divider bar: x: 0.7, y: 1.8, w: 1.5, h: 0.04
@@ -169,9 +163,8 @@ COORDINATE GUIDE (LAYOUT_WIDE: 13.33" × 7.5"):
 RULES:
 - All colors: hex strings WITHOUT # prefix
 - fontFace: "Arial" for all text
-- Always end with: return pptx;
+- Always end code with: return pptx;
 - Do NOT use require(), import, process, or fs
 - Keep slides visually clean with generous spacing
-- Use tables for data comparisons, shapes for visual elements
-- Be creative with layouts — you're not limited to the templates above`;
+- Be creative with layouts — you are not limited to the templates above`;
 }
