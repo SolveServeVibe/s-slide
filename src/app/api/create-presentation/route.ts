@@ -166,5 +166,5 @@ CRITICAL RULES:
 - ALWAYS use L.* for positions — consistent spacing across slides
 - NEVER use require(), import, process, or fs
 - End with: return pptx;
-- Max 10 slides. Be creative within the design system.`;
+- Create as many slides as needed to cover the topic thoroughly.`;
 }
