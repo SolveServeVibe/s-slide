@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
 
 interface SlidePreview {
   type: "title" | "fire" | "claim" | "proof" | "closing";
@@ -16,71 +15,70 @@ interface PresentationResult {
   title: string;
 }
 
-const typeColors: Record<string, string> = {
-  title: "bg-purple-700 text-white",
-  fire: "bg-gray-900 text-white",
-  claim: "bg-white text-gray-900",
-  proof: "bg-purple-50 text-gray-900",
-  closing: "bg-purple-700 text-white",
+const typeStyles: Record<string, { bg: string; text: string; accent: string }> = {
+  title:   { bg: "bg-[#6B21A8]", text: "text-white",              accent: "text-purple-200" },
+  fire:    { bg: "bg-[#1E1B2E]", text: "text-white",              accent: "text-amber-400" },
+  claim:   { bg: "bg-white",     text: "text-purple-800",         accent: "text-gray-700" },
+  proof:   { bg: "bg-[#F3F0FF]", text: "text-purple-800",         accent: "text-gray-700" },
+  closing: { bg: "bg-[#6B21A8]", text: "text-white",              accent: "text-purple-200" },
 };
 
 export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [presentation, setPresentation] = useState<PresentationResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [presentation, setPresentation] = useState<PresentationResult | null>(null);
+  const [genStatus, setGenStatus] = useState<string>("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isGenerating) return;
 
-    const userMessage = { role: "user", content: input };
-    setMessages(prev => [...prev, userMessage]);
     const query = input;
+    setMessages(prev => [...prev, { role: "user", content: query }]);
     setInput("");
-    setIsLoading(true);
+    setIsGenerating(true);
     setPresentation(null);
+    setGenStatus("Calling AI...");
 
+    // Add placeholder assistant message
     setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
     try {
-      const chatRes = await fetch("/api/chat", {
+      setGenStatus("AI is designing your slides...");
+      const presRes = await fetch("/api/create-presentation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMessage] }),
+        body: JSON.stringify({ message: query }),
       });
+      const data = await presRes.json();
 
-      if (chatRes.ok) {
-        const reader = chatRes.body?.getReader();
-        if (reader) {
-          const decoder = new TextDecoder();
-          let text = "";
-          let buf = "";
+      if (data.success) {
+        const pres: PresentationResult = {
+          downloadUrl: data.downloadUrl,
+          filename: data.filename,
+          slides: data.slides,
+          title: data.title,
+        };
+        setPresentation(pres);
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const lines = buf.split("\n");
-            buf = lines.pop() || "";
-            for (const line of lines) {
-              const t = line.trim();
-              if (!t.startsWith("data:")) continue;
-              try {
-                const d = JSON.parse(t.slice(5).trim());
-                if (d.content) {
-                  text += d.content;
-                  setMessages(prev => {
-                    const u = [...prev];
-                    u[u.length - 1] = { role: "assistant", content: text };
-                    return u;
-                  });
-                }
-              } catch {}
-            }
-          }
-        }
+        const slideCount = data.slides?.length ?? 0;
+        setMessages(prev => {
+          const u = [...prev];
+          u[u.length - 1] = {
+            role: "assistant",
+            content: `Done! Generated **${slideCount} slides** for your presentation. Download the .pptx file or preview the slides on the right.`,
+          };
+          return u;
+        });
+        setGenStatus("");
+      } else {
+        setMessages(prev => {
+          const u = [...prev];
+          u[u.length - 1] = { role: "assistant", content: `Error: ${data.error ?? "Generation failed"}. Try again.` };
+          return u;
+        });
+        setGenStatus("");
       }
     } catch {
       setMessages(prev => {
@@ -88,28 +86,7 @@ export default function Home() {
         u[u.length - 1] = { role: "assistant", content: "Something went wrong. Try again." };
         return u;
       });
-    } finally {
-      setIsLoading(false);
-    }
-
-    setIsGenerating(true);
-    try {
-      const presRes = await fetch("/api/create-presentation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: query }),
-      });
-      const data = await presRes.json();
-      if (data.success) {
-        setPresentation({
-          downloadUrl: data.downloadUrl,
-          filename: data.filename,
-          slides: data.slides,
-          title: data.title,
-        });
-      }
-    } catch {
-      // Silent fail - user can retry
+      setGenStatus("");
     } finally {
       setIsGenerating(false);
     }
@@ -120,7 +97,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen gradient-bg">
-      <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         <header className="mb-8">
           <h1 className="text-4xl font-bold text-purple-600 mb-2">s-slide</h1>
           <p className="text-gray-600">Create stunning presentations with AI</p>
@@ -129,7 +106,7 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chat panel */}
           <div className="bg-white rounded-2xl shadow-lg flex flex-col">
-            <div className="h-[520px] overflow-y-auto p-4 space-y-3">
+            <div className="h-[560px] overflow-y-auto p-4 space-y-3">
               {messages.length === 0 && (
                 <div className="text-center text-gray-400 py-20">
                   <p className="text-lg mb-2">Start creating your presentation</p>
@@ -138,14 +115,10 @@ export default function Home() {
               )}
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[90%] rounded-2xl px-4 py-3 ${m.role === "user" ? "bg-purple-100 text-gray-900" : "bg-gray-50 text-gray-900"}`}>
-                    {m.role === "assistant" ? (
-                      <div className="prose prose-sm max-w-none prose-headings:text-purple-700 prose-a:text-purple-600">
-                        <ReactMarkdown>{m.content || (isLoading ? "Thinking..." : "")}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div>{m.content}</div>
-                    )}
+                  <div className={`max-w-[90%] rounded-2xl px-4 py-3 ${
+                    m.role === "user" ? "bg-purple-100 text-gray-900" : "bg-gray-50 text-gray-900"
+                  }`}>
+                    <div className="whitespace-pre-wrap">{m.content}</div>
                   </div>
                 </div>
               ))}
@@ -153,7 +126,7 @@ export default function Home() {
                 <div className="flex justify-start">
                   <div className="px-4 py-2 bg-purple-50 text-purple-700 rounded-xl flex items-center gap-2 text-sm">
                     <span className="inline-block w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                    Generating slides...
+                    {genStatus}
                   </div>
                 </div>
               )}
@@ -165,15 +138,15 @@ export default function Home() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   placeholder="Describe your presentation..."
-                  disabled={isLoading}
+                  disabled={isGenerating}
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:opacity-50"
                 />
                 <button
                   type="submit"
-                  disabled={isLoading || !input.trim()}
+                  disabled={isGenerating || !input.trim()}
                   className="px-6 py-3 bg-purple-500 text-white rounded-xl hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium"
                 >
-                  {isLoading ? (
+                  {isGenerating ? (
                     <span className="flex items-center gap-2">
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       Creating...
@@ -210,69 +183,53 @@ export default function Home() {
               {isGenerating && !presentation && (
                 <div className="text-center text-gray-400 py-20">
                   <span className="inline-block w-8 h-8 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mb-4" />
-                  <p>AI is designing your slides...</p>
+                  <p>{genStatus || "Generating..."}</p>
                 </div>
               )}
-              {presentation?.slides.map((slide, i) => (
-                <div key={i} className="rounded-xl overflow-hidden border border-gray-200">
-                  <div className={`${typeColors[slide.type] || "bg-white"} p-4`}>
-                    {slide.type === "fire" && (
-                      <span className="text-xl mr-1.5">&#x1F525;</span>
-                    )}
-                    {slide.type === "claim" && (
-                      <div className="flex items-start gap-3">
-                        <div className="w-1 h-12 bg-purple-500 rounded-full shrink-0 mt-1" />
-                        <div>
-                          <h3 className="text-lg font-bold text-purple-700 mb-1">{slide.headline}</h3>
-                          {slide.bullets && slide.bullets.length > 0 && (
-                            <ul className="space-y-1">
-                              {slide.bullets.map((b, j) => (
-                                <li key={j} className="text-sm text-gray-700 flex gap-2">
-                                  <span className="text-purple-400 shrink-0">&#x25CF;</span>
-                                  <span>{b}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {slide.type === "proof" && (
-                      <div>
-                        <h3 className="text-lg font-bold text-purple-700 mb-1">{slide.headline}</h3>
-                        {slide.bullets && slide.bullets.length > 0 && (
-                          <ul className="space-y-1">
-                            {slide.bullets.map((b, j) => (
-                              <li key={j} className="text-sm text-gray-700 flex gap-2">
-                                <span className="text-purple-400 shrink-0">&#x25CF;</span>
-                                <span>{b}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    )}
-                    {(slide.type === "title" || slide.type === "fire" || slide.type === "closing") && (
-                      <div className="text-center">
-                        <h3 className={`text-xl font-bold mb-1 ${slide.type === "closing" ? "text-white" : ""}`}>
+              {presentation?.slides.map((slide, i) => {
+                const style = typeStyles[slide.type] ?? typeStyles.claim;
+                return (
+                  <div key={i} className="rounded-lg overflow-hidden shadow-sm border border-gray-200">
+                    {/* Slide thumbnail - 16:9 aspect ratio */}
+                    <div className={`relative ${style.bg} ${style.text} p-4`} style={{ aspectRatio: "16/9" }}>
+                      {slide.type === "fire" && (
+                        <span className="absolute top-3 left-3 text-2xl">&#x1F525;</span>
+                      )}
+                      {slide.type === "claim" && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-600" />
+                      )}
+                      <div className={`h-full flex flex-col justify-center ${
+                        slide.type === "title" || slide.type === "closing" ? "items-center text-center" : "pl-3"
+                      }`}>
+                        <h3 className={`font-bold mb-2 ${
+                          slide.type === "title" || slide.type === "closing" ? "text-xl" : "text-base"
+                        }`}>
                           {slide.headline}
                         </h3>
                         {slide.bullets && slide.bullets.length > 0 && (
-                          <ul className="space-y-1 mt-2">
-                            {slide.bullets.map((b, j) => (
-                              <li key={j} className="text-sm text-purple-200">{b}</li>
+                          <ul className="space-y-1">
+                            {slide.bullets.slice(0, 4).map((b, j) => (
+                              <li key={j} className={`text-xs flex gap-1.5 ${style.accent}`}>
+                                {slide.type !== "title" && slide.type !== "closing" && (
+                                  <span className="shrink-0">&#x25CF;</span>
+                                )}
+                                <span className="truncate">{b}</span>
+                              </li>
                             ))}
+                            {slide.bullets.length > 4 && (
+                              <li className={`text-xs ${style.accent}`}>+{slide.bullets.length - 4} more</li>
+                            )}
                           </ul>
                         )}
                       </div>
-                    )}
+                    </div>
+                    <div className="px-3 py-1 bg-gray-50 text-xs text-gray-400 flex justify-between border-t border-gray-100">
+                      <span>Slide {i + 1} of {presentation.slides.length}</span>
+                      <span className="uppercase tracking-wide font-medium">{slide.type}</span>
+                    </div>
                   </div>
-                  <div className="px-4 py-1.5 bg-gray-100 text-xs text-gray-400 flex justify-between">
-                    <span>Slide {i + 1} of {presentation.slides.length}</span>
-                    <span className="uppercase tracking-wide">{slide.type}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
