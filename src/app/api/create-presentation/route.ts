@@ -25,7 +25,7 @@ const presentationCodeSchema = z.object({
 const C = {
   purple: "6B21A8", purpleLight: "7C3AED", purplePale: "A78BFA",
   purpleMist: "F3F0FF", white: "FFFFFF", dark: "1E1B2E",
-  gray: "555555", grayLight: "999999", accent: "F59E0B",
+  gray: "555555", grayLight: "999999",
 };
 
 // Builder functions injected into code context — guarantee design consistency
@@ -36,62 +36,62 @@ const F = "Arial";
 function titleSlide(pptx, headline, subtitle) {
   const s = pptx.addSlide();
   s.background = { fill: C.purple };
-  s.addText(headline, { x: 1, y: 1.8, w: 11, h: 2, fontSize: 40, bold: true, color: C.white, fontFace: F, align: "center" });
-  if (subtitle) s.addText(subtitle, { x: 1, y: 3.8, w: 11, h: 1, fontSize: 18, color: C.purplePale, fontFace: F, align: "center" });
+  s.addText(headline, { x: 1.5, y: 2, w: 10, h: 2.5, fontSize: 44, bold: true, color: C.white, fontFace: F, align: "center" });
+  if (subtitle) s.addText(subtitle, { x: 1.5, y: 4.5, w: 10, h: 1.2, fontSize: 30, color: C.purplePale, fontFace: F, align: "center" });
   return s;
 }
 
 function fireSlide(pptx, headline, body, source) {
   const s = pptx.addSlide();
   s.background = { fill: C.dark };
-  s.addText("\u{1F525}", { x: 0.8, y: 1.5, w: 1, h: 1, fontSize: 48 });
-  s.addText(headline, { x: 1.8, y: 1.5, w: 9.5, h: 2, fontSize: 36, bold: true, color: C.white, fontFace: F });
-  s.addShape(pptx.ShapeType.rect, { x: 1.8, y: 3.2, w: 2, h: 0.05, fill: { type: "solid", color: C.accent } });
-  if (body) s.addText(body, { x: 1.8, y: 3.6, w: 9.5, h: 1.5, fontSize: 18, color: C.grayLight, fontFace: F, lineSpacingMultiple: 1.4 });
-  if (source) s.addText(source, { x: 1.8, y: 5.5, w: 9.5, h: 0.3, fontSize: 10, color: C.grayLight, fontFace: F, italic: true });
+  s.addText("\u{1F525}", { x: 1.2, y: 1.5, w: 1.2, h: 1.2, fontSize: 56 });
+  s.addText(headline, { x: 2.4, y: 1.5, w: 9, h: 2.5, fontSize: 40, bold: true, color: C.white, fontFace: F });
+  s.addShape(pptx.ShapeType.rect, { x: 2.4, y: 3.8, w: 2.5, h: 0.06, fill: { type: "solid", color: C.purpleLight } });
+  if (body) s.addText(body, { x: 2.4, y: 4.2, w: 9, h: 1.8, fontSize: 30, color: C.grayLight, fontFace: F, lineSpacingMultiple: 1.5 });
+  if (source) s.addText(source, { x: 2.4, y: 6.2, w: 9, h: 0.4, fontSize: 18, color: C.grayLight, fontFace: F, italic: true });
   return s;
 }
 
 function claimSlide(pptx, headline, bullets, source, slideNum) {
   const s = pptx.addSlide();
   s.background = { fill: C.white };
-  s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.12, h: "100%", fill: { type: "solid", color: C.purpleLight } });
-  s.addText(headline, { x: 0.7, y: 0.5, w: 11.5, h: 1.2, fontSize: 28, bold: true, color: C.purple, fontFace: F });
-  s.addShape(pptx.ShapeType.rect, { x: 0.7, y: 1.8, w: 1.5, h: 0.04, fill: { type: "solid", color: C.purplePale } });
+  s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.15, h: "100%", fill: { type: "solid", color: C.purpleLight } });
+  s.addText(headline, { x: 1.2, y: 0.8, w: 10.5, h: 1.5, fontSize: 36, bold: true, color: C.purple, fontFace: F });
+  s.addShape(pptx.ShapeType.rect, { x: 1.2, y: 2.3, w: 2, h: 0.05, fill: { type: "solid", color: C.purplePale } });
   if (bullets && bullets.length > 0) {
     s.addText(
-      bullets.map(b => ({ text: b, options: { fontSize: 15, color: C.gray, fontFace: F, bullet: { code: "25CF" }, paraSpaceAfter: 8 } })),
-      { x: 0.7, y: 2.1, w: 11.5, h: 3.5, valign: "top" }
+      bullets.map(b => ({ text: b, options: { fontSize: 30, color: C.gray, fontFace: F, bullet: { code: "25CF" }, paraSpaceAfter: 12 } })),
+      { x: 1.2, y: 2.8, w: 10.5, h: 4, valign: "top" }
     );
   }
-  if (source) s.addText(source, { x: 0.7, y: 6.3, w: 11.5, h: 0.3, fontSize: 9, color: C.grayLight, fontFace: F, italic: true });
-  if (slideNum) s.addText(String(slideNum), { x: 11.5, y: 7, w: 0.5, h: 0.3, fontSize: 10, color: C.grayLight, fontFace: F, align: "right" });
+  if (source) s.addText(source, { x: 1.2, y: 6.8, w: 10.5, h: 0.4, fontSize: 18, color: C.grayLight, fontFace: F, italic: true });
+  if (slideNum) s.addText(String(slideNum), { x: 11.2, y: 7, w: 0.5, h: 0.4, fontSize: 18, color: C.grayLight, fontFace: F, align: "right" });
   return s;
 }
 
 function proofSlide(pptx, headline, bullets, source, slideNum) {
   const s = pptx.addSlide();
   s.background = { fill: C.purpleMist };
-  s.addText(headline, { x: 0.7, y: 0.5, w: 11.5, h: 0.8, fontSize: 24, bold: true, color: C.purple, fontFace: F });
-  s.addShape(pptx.ShapeType.rect, { x: 0.7, y: 1.4, w: 1.5, h: 0.04, fill: { type: "solid", color: C.purplePale } });
+  s.addText(headline, { x: 1.2, y: 0.8, w: 10.5, h: 1.2, fontSize: 36, bold: true, color: C.purple, fontFace: F });
+  s.addShape(pptx.ShapeType.rect, { x: 1.2, y: 2, w: 2, h: 0.05, fill: { type: "solid", color: C.purplePale } });
   if (bullets && bullets.length > 0) {
     s.addText(
-      bullets.map(b => ({ text: b, options: { fontSize: 14, color: C.gray, fontFace: F, bullet: { code: "25CF" }, paraSpaceAfter: 6 } })),
-      { x: 0.7, y: 2.2, w: 11.5, h: 3.5, valign: "top" }
+      bullets.map(b => ({ text: b, options: { fontSize: 30, color: C.gray, fontFace: F, bullet: { code: "25CF" }, paraSpaceAfter: 10 } })),
+      { x: 1.2, y: 2.5, w: 10.5, h: 4, valign: "top" }
     );
   }
-  if (source) s.addText(source, { x: 0.7, y: 6.3, w: 11.5, h: 0.3, fontSize: 9, color: C.grayLight, fontFace: F, italic: true });
-  if (slideNum) s.addText(String(slideNum), { x: 11.5, y: 7, w: 0.5, h: 0.3, fontSize: 10, color: C.grayLight, fontFace: F, align: "right" });
+  if (source) s.addText(source, { x: 1.2, y: 6.8, w: 10.5, h: 0.4, fontSize: 18, color: C.grayLight, fontFace: F, italic: true });
+  if (slideNum) s.addText(String(slideNum), { x: 11.2, y: 7, w: 0.5, h: 0.4, fontSize: 18, color: C.grayLight, fontFace: F, align: "right" });
   return s;
 }
 
 function closingSlide(pptx, headline, subtitle, callToAction) {
   const s = pptx.addSlide();
   s.background = { fill: C.purple };
-  s.addText(headline, { x: 1, y: 1.8, w: 11, h: 1.5, fontSize: 40, bold: true, color: C.white, fontFace: F, align: "center" });
-  if (subtitle) s.addText(subtitle, { x: 1, y: 3.5, w: 11, h: 1, fontSize: 16, color: C.purplePale, fontFace: F, align: "center" });
-  if (callToAction) s.addText(callToAction, { x: 1, y: 5, w: 11, h: 0.5, fontSize: 14, color: C.purplePale, fontFace: F, align: "center", italic: true });
-  s.addText("Created with s-slide", { x: 1, y: 6.5, w: 11, h: 0.4, fontSize: 11, color: C.purplePale, fontFace: F, align: "center" });
+  s.addText(headline, { x: 1.5, y: 2, w: 10, h: 2, fontSize: 44, bold: true, color: C.white, fontFace: F, align: "center" });
+  if (subtitle) s.addText(subtitle, { x: 1.5, y: 4, w: 10, h: 1.2, fontSize: 30, color: C.purplePale, fontFace: F, align: "center" });
+  if (callToAction) s.addText(callToAction, { x: 1.5, y: 5.5, w: 10, h: 0.6, fontSize: 30, color: C.purplePale, fontFace: F, align: "center", italic: true });
+  s.addText("Created with s-slide", { x: 1.5, y: 6.5, w: 10, h: 0.5, fontSize: 18, color: C.purplePale, fontFace: F, align: "center" });
   return s;
 }
 `;
@@ -187,7 +187,7 @@ Generate a JSON object with: audience, objective, slides, code.
 IMPORTANT: Generate "slides" array FIRST (for live preview), then "code" last.
 
 The "code" field calls INJECTED BUILDER FUNCTIONS. They handle ALL styling automatically.
-You ONLY provide content — colors, fonts, positions are locked in.
+You ONLY provide content — colors, fonts, positions, margins are locked in.
 
 AVAILABLE FUNCTIONS (already defined — just call them):
 
@@ -195,7 +195,7 @@ titleSlide(pptx, headline, subtitle?)
   Purple bg, centered white headline, purplePale subtitle
 
 fireSlide(pptx, headline, body?, source?)
-  Dark bg, fire emoji, white headline, orange accent bar, grayLight body
+  Dark bg, fire emoji, white headline, purple accent bar, grayLight body
 
 claimSlide(pptx, headline, bullets?, source?, slideNum?)
   White bg, purpleLight left accent bar, purple headline, gray bullets
@@ -221,16 +221,18 @@ closingSlide(pptx, "Start Your Homelab Journey", "Enterprise power, zero cost", 
 return pptx;
 
 For tables or custom layouts you CAN use raw PptxGenJS (pptx.addSlide(), slide.addTable, etc.)
-but ONLY use these colors: C.purple, C.purpleLight, C.purplePale, C.purpleMist, C.white, C.dark, C.gray, C.grayLight, C.accent
+but ONLY use these colors: C.purple, C.purpleLight, C.purplePale, C.purpleMist, C.white, C.dark, C.gray, C.grayLight
 and ALWAYS use fontFace: "Arial".
 
-DESIGN METHODOLOGY:
-1. FIRE opener: shocking statistic, counterintuitive fact, or urgent problem
-2. CLAIM+PROOF: claim slides state one bold argument, proof slides show evidence
-3. Structure: title -> fire -> claim/proof pairs -> closing
-4. ONE MESSAGE PER SLIDE, 3-5 bullets max
-5. Use REAL facts, data, specific numbers. Cite sources.
-6. Closing reinforces objective with call to action
+DESIGN PRINCIPLES (NON-NEGOTIABLE):
+1. ONE IDEA PER SLIDE — each slide makes exactly ONE point
+2. 30 WORDS MAX per slide — less is more, use visuals over text
+3. FIRE opener: shocking statistic, counterintuitive fact, or urgent problem
+4. CLAIM+PROOF: claim slides state one bold argument, proof slides show evidence
+5. Structure: title -> fire -> claim/proof pairs -> closing
+6. MAX 3 BULLETS per slide — prefer tables, charts, or bold single statements over bullet lists
+7. Use REAL facts, data, specific numbers. Cite sources.
+8. Closing reinforces objective with call to action
 
 CRITICAL RULES:
 - Use the builder functions (titleSlide, fireSlide, etc.) for all standard slides
