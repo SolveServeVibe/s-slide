@@ -12,13 +12,42 @@ export const runtime = "nodejs";
 const presentationCodeSchema = z.object({
   audience: z.string(),
   objective: z.string(),
-  code: z.string().describe("Complete PptxGenJS JavaScript code creating the presentation. Must start with 'const pptx = new PptxGenJS();' and end with 'return pptx;'"),
+  code: z.string().describe("PptxGenJS code using C and D variables for design consistency"),
   slides: z.array(z.object({
     type: z.enum(["title", "fire", "claim", "proof", "closing"]),
     headline: z.string(),
     bullets: z.array(z.string()).optional(),
-  })).describe("Summary of each slide for the live preview"),
+  })).describe("Slide summaries for preview"),
 });
+
+// Design system — injected into code execution context
+const DESIGN_SYSTEM = {
+  colors: {
+    purple: "6B21A8",
+    purpleLight: "7C3AED",
+    purplePale: "A78BFA",
+    purpleMist: "F3F0FF",
+    white: "FFFFFF",
+    dark: "1E1B2E",
+    gray: "555555",
+    grayLight: "999999",
+    accent: "F59E0B",
+  },
+  font: "Arial",
+  layout: {
+    wide: "LAYOUT_WIDE",
+    safeX: 0.7,
+    safeY: 0.5,
+    titleHeadline: { x: 1, y: 1.8, w: 11, h: 2, fontSize: 40 },
+    titleSubtitle: { x: 1, y: 3.8, w: 11, h: 1, fontSize: 18 },
+    headline: { x: 0.7, y: 0.5, w: 11.5, h: 1.2, fontSize: 28 },
+    body: { x: 0.7, y: 2.1, w: 11.5, h: 3.5, fontSize: 16 },
+    divider: { x: 0.7, y: 1.8, w: 1.5, h: 0.04 },
+    accentBar: { x: 0, y: 0, w: 0.12, h: "100%" },
+    slideNum: { x: 11.5, y: 7, w: 0.5, h: 0.3, fontSize: 10 },
+    source: { x: 0.7, y: 6.3, w: 11.5, h: 0.3, fontSize: 9 },
+  },
+};
 
 export async function POST(req: Request) {
   const { message } = await req.json();
@@ -44,8 +73,11 @@ export async function POST(req: Request) {
 
     console.log("[create-presentation] Got code, executing... Slides:", object.slides.length);
 
-    const fn = new Function("PptxGenJS", `"use strict"; return (async () => { ${object.code} })();`);
-    const pptx = await fn(PptxGenJS);
+    const fn = new Function(
+      "PptxGenJS", "C", "D", "L",
+      `"use strict"; return (async () => { ${object.code} })();`
+    );
+    const pptx = await fn(PptxGenJS, DESIGN_SYSTEM.colors, DESIGN_SYSTEM, DESIGN_SYSTEM.layout);
 
     if (!pptx || typeof pptx.write !== "function") {
       throw new Error("Generated code did not return a PptxGenJS instance");
@@ -72,99 +104,67 @@ export async function POST(req: Request) {
 }
 
 function buildPrompt(message: string): string {
-  return `You are a world-class presentation designer and PptxGenJS expert.
-Create a professional, visually stunning presentation for: "${message}"
+  return `Create a professional presentation for: "${message}"
 
-You will generate a JSON object with:
-- audience: target audience
-- objective: desired outcome
-- code: complete PptxGenJS JavaScript code (see API reference below)
-- slides: array of slide summaries for the preview
+Generate a JSON object with: audience, objective, code, slides.
 
-DESIGN METHODOLOGY (follow strictly):
-1. Define the audience and objective
-2. FIRE: Open with a burning problem — shocking statistic, counterintuitive fact, or urgent question
-3. CLAIM+PROOF: Each claim slide states one bold argument. Follow with proof slides showing data/evidence.
-4. Structure: title → fire (hook) → claim/proof pairs → closing
-5. ONE MESSAGE PER SLIDE: headline = one point. Max 3-5 bullets per slide.
-6. Use REAL facts, data, specific numbers. Cite sources. No generic filler.
-7. Closing: reinforce objective, include call to action
+The "code" field contains PptxGenJS JavaScript. It receives these variables:
 
-The "code" field must contain complete, executable PptxGenJS JavaScript.
+C (colors) — USE THESE FOR ALL COLORS, never hardcode hex:
+  C.purple    = "6B21A8"  (title bg, primary headings)
+  C.purpleLight = "7C3AED" (accent bars, left sidebar)
+  C.purplePale  = "A78BFA" (secondary accent)
+  C.purpleMist  = "F3F0FF" (proof slide bg)
+  C.white     = "FFFFFF"
+  C.dark      = "1E1B2E"  (fire slide bg)
+  C.gray      = "555555"  (body text)
+  C.grayLight = "999999"  (secondary text, sources)
+  C.accent    = "F59E0B"  (fire accent bar)
 
-PPTXGENJS API REFERENCE:
-Available as: PptxGenJS (the constructor is passed as a parameter — do NOT import it)
+D (design system) — D.font = "Arial", D.colors = C, D.layout = L
+L (layout) — preset coordinates:
+  L.titleHeadline  = { x:1, y:1.8, w:11, h:2, fontSize:40 }
+  L.titleSubtitle  = { x:1, y:3.8, w:11, h:1, fontSize:18 }
+  L.headline       = { x:0.7, y:0.5, w:11.5, h:1.2, fontSize:28 }
+  L.body           = { x:0.7, y:2.1, w:11.5, h:3.5, fontSize:16 }
+  L.divider        = { x:0.7, y:1.8, w:1.5, h:0.04 }
+  L.accentBar      = { x:0, y:0, w:0.12, h:"100%" }
+  L.slideNum       = { x:11.5, y:7, w:0.5, h:0.3, fontSize:10 }
+  L.source         = { x:0.7, y:6.3, w:11.5, h:0.3, fontSize:9 }
 
-const pptx = new PptxGenJS();
-pptx.layout = "LAYOUT_WIDE"; // 13.33" × 7.5"
-pptx.author = "s-slide AI";
-pptx.title = "Title";
+Use spread to apply: slide.addText("Title", { ...L.titleHeadline, color: C.white, bold: true, fontFace: D.font, align: "center" });
 
-const slide = pptx.addSlide();
-slide.background = { fill: "HEXNOHASH" }; // NO # prefix
+DESIGN METHODOLOGY:
+1. FIRE opener: shocking statistic, counterintuitive fact, or urgent problem
+2. CLAIM+PROOF: claim slides state one bold argument, proof slides show evidence
+3. Structure: title -> fire -> claim/proof pairs -> closing
+4. ONE MESSAGE PER SLIDE, 3-5 bullets max
+5. Use REAL facts, data, specific numbers. Cite sources.
+6. Closing reinforces objective with call to action
 
-// Plain text
-slide.addText("text", {
-  x: 1, y: 1.8, w: 11, h: 2,
-  fontSize: 40, bold: true, color: "FFFFFF",
-  fontFace: "Arial", align: "center"
-});
+SLIDE TYPES:
+Title:  bg C.purple, centered white headline (...L.titleHeadline), subtitle in C.purplePale
+Fire:   bg C.dark, fire emoji, white bold headline, C.accent underline bar, C.grayLight body
+Claim:  bg C.white, C.purpleLight left bar (...L.accentBar), C.purple headline, C.gray bullets
+Proof:  bg C.purpleMist, C.purple headline, evidence in bullets or tables
+Closing: bg C.purple, centered white headline, C.purplePale subtitle
 
-// Rich text array (bullets)
-slide.addText([
-  { text: "Point 1", options: { fontSize: 15, color: "555555", fontFace: "Arial", bullet: { code: "25CF" }, paraSpaceAfter: 8 } },
-  { text: "Point 2", options: { fontSize: 15, color: "555555", fontFace: "Arial", bullet: { code: "25CF" }, paraSpaceAfter: 8 } },
-], { x: 0.7, y: 2.1, w: 11, h: 3.5, valign: "top" });
+PptxGenJS API:
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE"; pptx.author = "s-slide AI"; pptx.title = "...";
+  const slide = pptx.addSlide();
+  slide.background = { fill: C.purple };
+  slide.addText("text", { ...L.titleHeadline, color: C.white, fontFace: D.font, align: "center" });
+  slide.addText([{ text: "Point", options: { fontSize:15, color:C.gray, fontFace:D.font, bullet:{code:"25CF"}, paraSpaceAfter:8 }}], { ...L.body, valign:"top" });
+  slide.addShape(pptx.ShapeType.rect, { ...L.accentBar, fill:{type:"solid",color:C.purpleLight} });
+  slide.addTable([["H1","H2"],["D1","D2"]], { x:0.7, y:2, w:11.5, fontSize:12, fontFace:D.font, border:{pt:0.5,color:"E5E7EB"} });
+  return pptx; // MANDATORY last line
 
-// Shapes
-slide.addShape(pptx.ShapeType.rect, {
-  x: 0, y: 0, w: 0.12, h: "100%",
-  fill: { type: "solid", color: "7C3AED" }
-});
-
-// Tables
-slide.addTable([["Header 1", "Header 2"], ["Data 1", "Data 2"]], {
-  x: 0.7, y: 2, w: 11.5,
-  fontSize: 12, fontFace: "Arial",
-  border: { pt: 0.5, color: "E5E7EB" },
-  colW: [5.75, 5.75],
-  rowH: [0.5, 0.4],
-  autoPage: false,
-});
-
-return pptx; // MANDATORY — must be the last line
-
-COLOR PALETTE:
-- purple: "6B21A8" — title bg, primary headings
-- purpleLight: "7C3AED" — accent bars, left sidebar
-- purplePale: "A78BFA" — secondary accent, dividers
-- purpleMist: "F3F0FF" — proof slide bg
-- white: "FFFFFF"
-- dark: "1E1B2E" — fire slide bg
-- gray: "555555" — body text
-- grayLight: "999999" — secondary text, sources
-- accent: "F59E0B" — fire slide accent bar
-
-SLIDE DESIGN GUIDE:
-Title: bg purple ("6B21A8"), large centered white headline (fontSize: 40), subtitle in purplePale
-Fire: bg dark ("1E1B2E"), addText with fire emoji, white bold headline, orange accent bar (addShape rect), grayLight body
-Claim: white bg, thin purpleLight left bar (addShape x=0, w=0.12, h="100%"), purple headline, gray bullets
-Proof: purpleMist bg ("F3F0FF"), purple headline, data/evidence — use tables or bullets for data
-Closing: purple bg, large white headline centered, purplePale subtitle, italic objective
-
-COORDINATE GUIDE (LAYOUT_WIDE: 13.33" × 7.5"):
-- Safe area: x: 0.7-12.5, y: 0.5-6.8
-- Title: x: 1, y: 1.8, w: 11, h: 2
-- Body: x: 0.7, y: 2.1, w: 11.5, h: 3.5
-- Divider bar: x: 0.7, y: 1.8, w: 1.5, h: 0.04
-- Slide number: x: 11.5, y: 7, w: 0.5, h: 0.3
-- Source: x: 0.7, y: 6.3, w: 11.5, h: 0.3
-
-RULES:
-- All colors: hex strings WITHOUT # prefix
-- fontFace: "Arial" for all text
-- Always end code with: return pptx;
-- Do NOT use require(), import, process, or fs
-- Keep slides visually clean with generous spacing
-- Be creative with layouts — you are not limited to the templates above`;
+CRITICAL RULES:
+- ALWAYS use C.purple, C.white, etc. — NEVER hardcode hex colors like "6B21A8"
+- ALWAYS use fontFace: D.font — NEVER hardcode "Arial"
+- ALWAYS use L.* for positions — consistent spacing across slides
+- NEVER use require(), import, process, or fs
+- End with: return pptx;
+- Max 10 slides. Be creative within the design system.`;
 }
