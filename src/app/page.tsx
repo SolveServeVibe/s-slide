@@ -3,19 +3,26 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 
-interface SlideData {
-  title: string;
-  subtitle?: string;
-  bullets: string[];
-  notes?: string;
+interface SlidePreview {
+  type: "title" | "fire" | "claim" | "proof" | "closing";
+  headline: string;
+  bullets?: string[];
 }
 
 interface PresentationResult {
   downloadUrl: string;
   filename: string;
-  slides: SlideData[];
+  slides: SlidePreview[];
   title: string;
 }
+
+const typeColors: Record<string, string> = {
+  title: "bg-purple-700 text-white",
+  fire: "bg-gray-900 text-white",
+  claim: "bg-white text-gray-900",
+  proof: "bg-purple-50 text-gray-900",
+  closing: "bg-purple-700 text-white",
+};
 
 export default function Home() {
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
@@ -35,11 +42,9 @@ export default function Home() {
     setIsLoading(true);
     setPresentation(null);
 
-    // Add placeholder
     setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
     try {
-      // Stream chat response
       const chatRes = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,7 +92,6 @@ export default function Home() {
       setIsLoading(false);
     }
 
-    // Auto-generate presentation
     setIsGenerating(true);
     try {
       const presRes = await fetch("/api/create-presentation", {
@@ -122,7 +126,6 @@ export default function Home() {
           <p className="text-gray-600">Create stunning presentations with AI</p>
         </header>
 
-        {/* Chat + Preview side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chat panel */}
           <div className="bg-white rounded-2xl shadow-lg flex flex-col">
@@ -211,21 +214,34 @@ export default function Home() {
                 </div>
               )}
               {presentation?.slides.map((slide, i) => (
-                <div key={i} className="bg-gray-50 rounded-xl overflow-hidden border border-gray-200">
-                  {i === 0 ? (
-                    // Title slide preview
-                    <div className="bg-purple-700 text-white p-6 text-center">
-                      <h3 className="text-2xl font-bold mb-2">{slide.title}</h3>
-                      {slide.subtitle && <p className="text-purple-200 text-sm">{slide.subtitle}</p>}
-                    </div>
-                  ) : (
-                    // Content slide preview
-                    <div className="p-4">
+                <div key={i} className="rounded-xl overflow-hidden border border-gray-200">
+                  <div className={`${typeColors[slide.type] || "bg-white"} p-4`}>
+                    {slide.type === "fire" && (
+                      <span className="text-xl mr-1.5">&#x1F525;</span>
+                    )}
+                    {slide.type === "claim" && (
                       <div className="flex items-start gap-3">
                         <div className="w-1 h-12 bg-purple-500 rounded-full shrink-0 mt-1" />
                         <div>
-                          <h3 className="text-lg font-bold text-purple-700 mb-2">{slide.title}</h3>
-                          <ul className="space-y-1.5">
+                          <h3 className="text-lg font-bold text-purple-700 mb-1">{slide.headline}</h3>
+                          {slide.bullets && slide.bullets.length > 0 && (
+                            <ul className="space-y-1">
+                              {slide.bullets.map((b, j) => (
+                                <li key={j} className="text-sm text-gray-700 flex gap-2">
+                                  <span className="text-purple-400 shrink-0">&#x25CF;</span>
+                                  <span>{b}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {slide.type === "proof" && (
+                      <div>
+                        <h3 className="text-lg font-bold text-purple-700 mb-1">{slide.headline}</h3>
+                        {slide.bullets && slide.bullets.length > 0 && (
+                          <ul className="space-y-1">
                             {slide.bullets.map((b, j) => (
                               <li key={j} className="text-sm text-gray-700 flex gap-2">
                                 <span className="text-purple-400 shrink-0">&#x25CF;</span>
@@ -233,13 +249,27 @@ export default function Home() {
                               </li>
                             ))}
                           </ul>
-                        </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                    {(slide.type === "title" || slide.type === "fire" || slide.type === "closing") && (
+                      <div className="text-center">
+                        <h3 className={`text-xl font-bold mb-1 ${slide.type === "closing" ? "text-white" : ""}`}>
+                          {slide.headline}
+                        </h3>
+                        {slide.bullets && slide.bullets.length > 0 && (
+                          <ul className="space-y-1 mt-2">
+                            {slide.bullets.map((b, j) => (
+                              <li key={j} className="text-sm text-purple-200">{b}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="px-4 py-1.5 bg-gray-100 text-xs text-gray-400 flex justify-between">
                     <span>Slide {i + 1} of {presentation.slides.length}</span>
-                    <span>s-slide</span>
+                    <span className="uppercase tracking-wide">{slide.type}</span>
                   </div>
                 </div>
               ))}
