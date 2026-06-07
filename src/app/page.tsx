@@ -36,7 +36,7 @@ export default function Home() {
     setPresTitle("");
     setGenStatus("streaming");
 
-    // Single LLM call — slides stream in via SSE
+    // Single LLM call: slides stream in via SSE
     try {
       const res = await fetch("/api/create-presentation", {
         method: "POST",

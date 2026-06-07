@@ -9,7 +9,7 @@ const ibmPlexSansThai = IBM_Plex_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "s-slide — AI Presentation Generator",
+  title: "s-slide: AI Presentation Generator",
   description: "Create stunning presentations with AI",
 };
 
