@@ -1,31 +1,31 @@
 import PptxGenJS from "pptxgenjs";
 
 export async function executePptxGenJSCode(code: string): Promise<Buffer> {
-  try {
-    // Create an async function that takes pptxgenjs as a parameter
-    const executeCode = new Function('pptxgenjs', `
-      return (async () => {
-        ${code}
-        // The code should create a pptx instance and we'll capture it
-        return pptxgenjs;
-      })();
-    `);
+  const executeCode = new Function('pptxgenjs', `
+    return (async () => {
+      ${code}
+      return pptxgenjs;
+    })();
+  `);
 
-    // Execute the code to get the pptx instance
-    const result = await executeCode(PptxGenJS);
+  const result = await executeCode(PptxGenJS);
 
-    // If the result is a PptxGenJS instance, generate the buffer
-    if (result && typeof result.write === 'function') {
-      const buffer = await result.write({ outputType: 'nodebuffer' });
-      return Buffer.from(buffer);
-    }
-
-    throw new Error('Failed to generate presentation - invalid pptx instance');
-  } catch (error) {
-    console.error("Code execution failed:", error);
-    throw new Error(`Execution failed: ${error instanceof Error ? error.message : String(error)}`);
+  if (result && typeof result.write === 'function') {
+    const buffer = await result.write({ outputType: 'nodebuffer' });
+    return Buffer.from(buffer);
   }
+
+  throw new Error('Failed to generate presentation');
 }
+
+const COLORS = {
+  title: "6B21A8",
+  heading: "7C3AED",
+  body: "333333",
+  subtitle: "888888",
+  accent: "A78BFA",
+  bg: "F3F0FF",
+};
 
 export function generatePresentationCode(
   topic: string,
@@ -33,93 +33,133 @@ export function generatePresentationCode(
   slideDetails?: string
 ): string {
   return `
-// Create a new presentation
 const pptx = new pptxgenjs();
-
-// Set presentation metadata
 pptx.author = "s-slide AI";
 pptx.company = "s-slide";
 pptx.title = "${topic.replace(/"/g, '\\"')}";
+pptx.layout = "LAYOUT_WIDE";
 
 ${slideDetails ? generateDetailedSlides(slideDetails, topic) : generateDefaultSlides(topic, slideCount)}
 
-// Return the pptx instance for buffer generation
 return pptx;
   `;
 }
 
 function generateDefaultSlides(topic: string, slideCount: number): string {
+  const escaped = topic.replace(/"/g, '\\"');
   const slides: string[] = [];
 
+  // Title slide with gradient-like background
   slides.push(`
-// Title Slide
-const slide1 = pptx.addSlide();
-slide1.addText("${topic.replace(/"/g, '\\"')}", {
-  x: 1,
-  y: 1.5,
-  w: 8,
-  h: 1.5,
-  fontSize: 44,
-  bold: true,
-  color: "6B21A8",
-  align: "center"
+const s1 = pptx.addSlide();
+s1.background = { fill: "F3F0FF" };
+s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: "100%", fill: { type: "solid", color: "6B21A8" } });
+s1.addText("${escaped}", {
+  x: 0.8, y: 1.8, w: 11.2, h: 2,
+  fontSize: 44, bold: true, color: "FFFFFF", align: "center", fontFace: "Arial"
 });
-slide1.addText("Created with AI", {
-  x: 1,
-  y: 3.5,
-  w: 8,
-  h: 0.5,
-  fontSize: 18,
-  color: "888888",
-  align: "center"
+s1.addText("Created with s-slide AI", {
+  x: 0.8, y: 4, w: 11.2, h: 0.6,
+  fontSize: 16, color: "C4B5FD", align: "center", fontFace: "Arial"
 });
-  `);
+`);
 
-  for (let i = 2; i <= slideCount; i++) {
+  // Content slides with real structure
+  const sections = getSlideSections(topic, slideCount);
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
     slides.push(`
-// Slide ${i}
-const slide${i} = pptx.addSlide();
-slide${i}.addText("Section ${i - 1}: ${topic.replace(/"/g, '\\"')}", {
-  x: 0.5,
-  y: 0.5,
-  w: 9,
-  h: 1,
-  fontSize: 32,
-  bold: true,
-  color: "7C3AED"
+const s${i + 2} = pptx.addSlide();
+s${i + 2}.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.15, h: "100%", fill: { type: "solid", color: "7C3AED" } });
+s${i + 2}.addText("${s.title.replace(/"/g, '\\"')}", {
+  x: 0.6, y: 0.4, w: 11.5, h: 0.9,
+  fontSize: 28, bold: true, color: "6B21A8", fontFace: "Arial"
 });
-slide${i}.addText("Key points will be added here based on your topic.", {
-  x: 0.5,
-  y: 2,
-  w: 9,
-  h: 3,
-  fontSize: 18,
-  color: "333333"
+s${i + 2}.addShape(pptx.ShapeType.rect, { x: 0.6, y: 1.3, w: 2, h: 0.04, fill: { type: "solid", color: "A78BFA" } });
+s${i + 2}.addText("${s.content.replace(/"/g, '\\"')}", {
+  x: 0.6, y: 1.6, w: 11.5, h: 4,
+  fontSize: 16, color: "333333", fontFace: "Arial", lineSpacingMultiple: 1.3, valign: "top"
 });
-    `);
+`);
   }
+
+  // Closing slide
+  slides.push(`
+const sLast = pptx.addSlide();
+sLast.background = { fill: "F3F0FF" };
+sLast.addText("Thank You!", {
+  x: 0.8, y: 2, w: 11.2, h: 1.5,
+  fontSize: 48, bold: true, color: "6B21A8", align: "center", fontFace: "Arial"
+});
+sLast.addText("Made with s-slide", {
+  x: 0.8, y: 3.8, w: 11.2, h: 0.6,
+  fontSize: 16, color: "888888", align: "center", fontFace: "Arial"
+});
+`);
 
   return slides.join("\n");
 }
 
+function getSlideSections(topic: string, count: number): Array<{ title: string; content: string }> {
+  // Generate meaningful section data based on topic
+  const t = topic.toLowerCase();
+  const sections: Array<{ title: string; content: string }> = [];
+
+  // Generic meaningful content structure
+  const introTitle = `What is ${topic}?`;
+  const introContent = `${topic} is an important subject worth exploring in detail. This presentation covers the key aspects, history, and future outlook.`;
+
+  sections.push({ title: introTitle, content: introContent });
+
+  if (count >= 3) {
+    sections.push({
+      title: "Key Points",
+      content: getBulletContent(topic),
+    });
+  }
+
+  if (count >= 4) {
+    sections.push({
+      title: "Benefits & Impact",
+      content: `Understanding ${topic} provides valuable insights for both personal and professional growth. The impact can be seen across multiple domains.`,
+    });
+  }
+
+  if (count >= 5) {
+    sections.push({
+      title: "Future Outlook",
+      content: `The future of ${topic} looks promising with continued development and innovation. Stay informed and adapt to emerging trends.`,
+    });
+  }
+
+  // Add extra slides if needed
+  while (sections.length < count - 1) {
+    const idx = sections.length + 1;
+    sections.push({
+      title: `Deep Dive ${idx}`,
+      content: `An in-depth look at additional aspects of ${topic} and their significance.`,
+    });
+  }
+
+  // Trim to fit (count - 1 content slides, minus title and closing)
+  return sections.slice(0, Math.max(1, count - 2));
+}
+
+function getBulletContent(topic: string): string {
+  return `• Understanding the fundamentals of ${topic}\n• Exploring real-world applications and use cases\n• Identifying challenges and opportunities\n• Learning best practices and strategies\n• Measuring success and outcomes`;
+}
+
 function generateDetailedSlides(slideDetails: string, topic: string): string {
   return `
-// Parse and create custom slides based on detailed requirements
 ${slideDetails}
 
-// Add a closing slide
 const closingSlide = pptx.addSlide();
-closingSlide.addText("Thank You", {
-  x: 1,
-  y: 2,
-  w: 8,
-  h: 1.5,
-  fontSize: 44,
-  bold: true,
-  color: "6B21A8",
-  align: "center"
+closingSlide.background = { fill: "F3F0FF" };
+closingSlide.addText("Thank You!", {
+  x: 0.8, y: 2, w: 11.2, h: 1.5,
+  fontSize: 48, bold: true, color: "6B21A8", align: "center", fontFace: "Arial"
 });
-  `;
+`;
 }
 
 export function parsePresentationRequest(userMessage: string): {
@@ -127,8 +167,6 @@ export function parsePresentationRequest(userMessage: string): {
   slideCount: number;
   details?: string;
 } {
-  const lowerMessage = userMessage.toLowerCase();
-
   const slideCountMatch = userMessage.match(/(\d+)\s*slide/i);
   const slideCount = slideCountMatch ? parseInt(slideCountMatch[1]) : 5;
 
@@ -140,9 +178,6 @@ export function parsePresentationRequest(userMessage: string): {
     .replace(/presentation\s*/gi, "")
     .trim();
 
-  if (!topic) {
-    topic = "My Presentation";
-  }
-
+  if (!topic) topic = "My Presentation";
   return { topic, slideCount };
 }
